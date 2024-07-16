@@ -1,20 +1,24 @@
 import os
 import logging
 import pandas as pd
-import wx
-import plotly.graph_objs as go
-import plotly.io as pio
-import io
 import subprocess
+import wx
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 
-CSV_FILE = "stream.csv"
-DELAY = 0.5  # Interval polling 0.5 seconds
-SCRIPT_PATH = "/home/bim/Downloads/loop.py"
+# Lokasi file CSV untuk setiap kategori
+LOCALIZER_CSV = "localizer.csv"
+GLIDEPATH_CSV = "glidepath.csv"
+VOR_CSV = "vor.csv"
 
-# Define the relevant columns for each category
-LOCALIZER_COLUMNS = ['AM-MOD./90Hz[%]', 'AM-MOD./150Hz[%]', 'DDM(90-150)[1]', 'LEVEL[dBm]']
-GLIDEPATH_COLUMNS = ['AM-MOD./90Hz[%]', 'AM-MOD./150Hz[%]', 'DDM(90-150)[1]', 'LEVEL[dBm]', 'GPS_alt[m]']
-VOR_COLUMNS = ['LEVEL[dBm]', 'PHI-90/150[Â°]', 'PHI-90/90[Â°]', 'PHI-150/150[Â°]']
+DELAY = 0.5
+SCRIPT_PATH = "loop.py"
+
+LOCALIZER_COLUMNS = ['AM-MOD./90Hz[%]', 'AM-MOD./150Hz[%]', 'DDM(90-150)[1]', 'LEVEL[dBm]', 'tes']
+GLIDEPATH_COLUMNS = ['AM-MOD./90Hz[%]', 'AM-MOD./150Hz[%]', 'DDM(90-150)[1]', 'LEVEL[dBm]', 'GPS_alt[m]', 'tes']
+VOR_COLUMNS = ['LEVEL[dBm]', 'PHI-90/150[°]', 'PHI-90/90[°]', 'PHI-150/150[°]', 'tes']
 
 class CSVViewerApp(wx.Frame):
     def __init__(self, parent, title):
@@ -23,7 +27,7 @@ class CSVViewerApp(wx.Frame):
 
         self.data = None
         self.figures = []
-        self.file_path = CSV_FILE
+        self.file_path = None
         self.last_modified_time = None
         self.selected_columns = []
         self.process = None
@@ -38,21 +42,15 @@ class CSVViewerApp(wx.Frame):
         main_sizer = wx.BoxSizer(wx.HORIZONTAL)
 
         left_panel = wx.Panel(panel)
-        left_panel.SetBackgroundColour(self.background_color)  # Set background color of left panel
+        left_panel.SetBackgroundColour(self.background_color)
         left_sizer = wx.BoxSizer(wx.VERTICAL)
 
-        # Buat sizer horizontal untuk gambar
-        img_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        # Load images without ICC profile
-        image_paths = ["/home/bim/Downloads/beta_no_icc.png", "/home/bim/Downloads/rs_no_icc.png"]
+        image_paths = ["D:/Magang/beta_no_icc.png", "D:/Magang/rs_no_icc.png"]
         for image_path in image_paths:
             img = wx.Image(image_path, wx.BITMAP_TYPE_PNG)
-            img = img.Scale(200, int(img.GetHeight() * 200 / img.GetWidth()), wx.IMAGE_QUALITY_HIGH)  # Adjust width to match header text
+            img = img.Scale(200, int(img.GetHeight() * 200 / img.GetWidth()), wx.IMAGE_QUALITY_HIGH)
             bmp = wx.StaticBitmap(left_panel, bitmap=wx.Bitmap(img))
-            img_sizer.Add(bmp, 0, wx.ALIGN_CENTER | wx.RIGHT, 10)  # Tambahkan margin kanan antar gambar
-
-        left_sizer.Add(img_sizer, 0, wx.ALIGN_CENTER | wx.TOP, 10)
+            left_sizer.Add(bmp, 0, wx.ALIGN_CENTER | wx.RIGHT, 10)
 
         header_text = wx.StaticText(left_panel, label="EVSD1000 Data Viewer")
         header_text.SetFont(wx.Font(28, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
@@ -65,7 +63,7 @@ class CSVViewerApp(wx.Frame):
         left_sizer.Add(choose_category_label, 0, wx.ALIGN_LEFT | wx.TOP, 20)
 
         self.category_choice = wx.Choice(left_panel, choices=["Localizer", "Glidepath", "VOR"])
-        self.category_choice.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))  # Atur ukuran font di sini
+        self.category_choice.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
         self.category_choice.Bind(wx.EVT_CHOICE, self.on_category_select)
         left_sizer.Add(self.category_choice, 0, wx.EXPAND | wx.ALL, 10)
 
@@ -94,7 +92,7 @@ class CSVViewerApp(wx.Frame):
         self.stop_button.Bind(wx.EVT_BUTTON, self.stop_stream)
         button_sizer.Add(self.stop_button, 0, wx.ALIGN_LEFT | wx.ALL, 10)
 
-        button_sizer.AddStretchSpacer()  # Add spacer to push buttons to the right
+        button_sizer.AddStretchSpacer()
 
         self.save_button = wx.Button(left_panel, label="Save PDF")
         self.save_button.Bind(wx.EVT_BUTTON, self.save_to_pdf)
@@ -115,7 +113,7 @@ class CSVViewerApp(wx.Frame):
         self.Bind(wx.EVT_CLOSE, self.on_close)
 
     def setup_colors(self):
-        self.background_color = "#002060"  # Adjusted background color
+        self.background_color = "#002060"
 
     def clear_all_selection(self, event):
         for checkbox in self.checkboxes:
@@ -126,15 +124,20 @@ class CSVViewerApp(wx.Frame):
     def read_csv_file(self, file_path):
         return pd.read_csv(file_path, encoding='latin1').tail(100)
 
-    def plot_line(self, data):
-        for column in data.columns:
-            trace = go.Scatter(
-                x=data.index,
-                y=data[column],
-                mode='lines',
-                name=column
-            )
-            self.figures.append(trace)
+    def plot_line(self, data, figsize=(10, 6)):  
+        fig, axes = plt.subplots(len(data.columns), 1, figsize=figsize, sharex=True)
+        
+        # Check if data.columns is not empty
+        if len(data.columns) > 0:
+            if len(data.columns) == 1:
+                axes = [axes]  # Ensure axes is a list when there's only one column
+
+            for i, column in enumerate(data.columns):
+                axes[i].plot(data.index, data[column], label=column)
+                axes[i].legend()
+
+            fig.tight_layout()
+            self.figures.append(fig)
 
     def update_plot(self):
         try:
@@ -151,25 +154,10 @@ class CSVViewerApp(wx.Frame):
     def update_figure_panel(self):
         self.figure_sizer.Clear(True)
         if self.figures:
-            y_axis_title = ', '.join(self.selected_columns) if self.selected_columns else "Values"
-            layout = go.Layout(
-                title="Data Plot",
-                xaxis=dict(title="Time"),
-                yaxis=dict(title=y_axis_title)
-            )
-            fig = go.Figure(data=self.figures, layout=layout)
-            bitmap = self.plotly_figure_to_bitmap(fig)
-            plot_bitmap = wx.StaticBitmap(self.figure_panel, bitmap=bitmap)
-            self.figure_sizer.Add(plot_bitmap, 1, wx.EXPAND)
+            for fig in self.figures:
+                canvas = FigureCanvas(self.figure_panel, -1, fig)
+                self.figure_sizer.Add(canvas, 1, wx.EXPAND)
         self.figure_panel.Layout()
-
-    def plotly_figure_to_bitmap(self, figure):
-        img_bytes = figure.to_image(format="png", width=800, height=600, scale=1)
-
-        # Convert bytes to wx.Bitmap
-        image = wx.Image(io.BytesIO(img_bytes), wx.BITMAP_TYPE_ANY)
-        bitmap = wx.Bitmap(image)
-        return bitmap
 
     def start_polling(self):
         self.polling_timer = wx.Timer(self)
@@ -188,16 +176,11 @@ class CSVViewerApp(wx.Frame):
 
     def load_and_initialize_data(self):
         try:
-            self.data = self.read_csv_file(self.file_path)
             self.update_column_list()
-            self.figures.clear()
-            if self.selected_columns:
-                self.plot_line(self.data[self.selected_columns])
-            else:
-                self.plot_line(self.data)
-            self.update_figure_panel()
-            self.last_modified_time = os.path.getmtime(self.file_path)
-            self.start_polling()
+            self.update_plot()
+            if self.file_path:
+                self.last_modified_time = os.path.getmtime(self.file_path)
+                self.start_polling()
         except Exception as e:
             logging.error(f"Failed to load file: {str(e)}")
 
@@ -207,11 +190,15 @@ class CSVViewerApp(wx.Frame):
 
         category = self.category_choice.GetStringSelection()
         columns = []
+
         if category == "Localizer":
+            self.file_path = LOCALIZER_CSV
             columns = LOCALIZER_COLUMNS
         elif category == "Glidepath":
+            self.file_path = GLIDEPATH_CSV
             columns = GLIDEPATH_COLUMNS
         elif category == "VOR":
+            self.file_path = VOR_CSV
             columns = VOR_COLUMNS
 
         for column in columns:
@@ -236,35 +223,23 @@ class CSVViewerApp(wx.Frame):
         self.update_plot()
 
     def save_to_pdf(self, event):
-        try:
-            data = self.read_csv_file(self.file_path)
-            figures = []
-            for column in data.columns:
-                trace = go.Scatter(
-                    x=data.index,
-                    y=data[column],
-                    mode='lines',
-                    name=column
-                )
-                figures.append(trace)
+        with wx.FileDialog(self, "Save PDF", wildcard="PDF files (*.pdf)|*.pdf",
+                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as file_dialog:
+            if file_dialog.ShowModal() == wx.ID_CANCEL:
+                return
 
-            y_axis_title = ', '.join(data.columns)
-            layout = go.Layout(
-                title="Data Plot",
-                xaxis=dict(title="Time"),
-                yaxis=dict(title=y_axis_title)
-            )
-            fig = go.Figure(data=figures, layout=layout)
-            pdf_path = "plot.pdf"
-            pio.write_image(fig, pdf_path, format='pdf', width=800, height=600, scale=1)
-            wx.MessageBox(f"PDF saved to {pdf_path}", "Success", wx.OK | wx.ICON_INFORMATION)
-        except Exception as e:
-            logging.error(f"Failed to save PDF: {str(e)}")
-            wx.MessageBox(f"Failed to save PDF: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
+            file_path = file_dialog.GetPath()
+            try:
+                with PdfPages(file_path) as pdf:
+                    for fig in self.figures:
+                        pdf.savefig(fig)
+                wx.MessageBox("PDF saved successfully.", "Success", wx.OK | wx.ICON_INFORMATION)
+            except Exception as e:
+                wx.MessageBox(f"Failed to save PDF: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
 
     def start_stream(self, event):
         if self.process is None:
-            self.process = subprocess.Popen(['python3', SCRIPT_PATH])
+            self.process = subprocess.Popen(['python', SCRIPT_PATH])
             wx.MessageBox("Streaming started", "Info", wx.OK | wx.ICON_INFORMATION)
         else:
             wx.MessageBox("Streaming already running", "Warning", wx.OK | wx.ICON_WARNING)
