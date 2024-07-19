@@ -1,14 +1,15 @@
+import sys
 import os
 import logging
 import pandas as pd
 import subprocess
-import wx
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.animation import FuncAnimation
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QRadioButton, QButtonGroup, QCheckBox, QPushButton, QFileDialog, QMessageBox, QHBoxLayout, QLabel, QGroupBox
+from PyQt5.QtGui import QPixmap, QFont
+from PyQt5.QtCore import Qt
 
-# Lokasi file CSV untuk setiap kategori
 LOCALIZER_CSV = "localizer.csv"
 GLIDEPATH_CSV = "glidepath.csv"
 VOR_CSV = "vor.csv"
@@ -16,179 +17,128 @@ VOR_CSV = "vor.csv"
 DELAY = 0.5
 SCRIPT_PATH = "loop.py"
 
-LOCALIZER_COLUMNS = ['AM-MOD./90Hz[%]', 'AM-MOD./150Hz[%]', 'DDM(90-150)[1]', 'LEVEL[dBm]', 'tes']
-GLIDEPATH_COLUMNS = ['AM-MOD./90Hz[%]', 'AM-MOD./150Hz[%]', 'DDM(90-150)[1]', 'LEVEL[dBm]', 'GPS_alt[m]', 'tes']
-VOR_COLUMNS = ['LEVEL[dBm]', 'PHI-90/150[°]', 'PHI-90/90[°]', 'PHI-150/150[°]', 'tes']
+LOCALIZER_COLUMNS = ['AM-MOD./90Hz[%]', 'AM-MOD./150Hz[%]', 'DDM(90-150)[1]', 'LEVEL[dBm]']
+GLIDEPATH_COLUMNS = ['AM-MOD./90Hz[%]', 'AM-MOD./150Hz[%]', 'DDM(90-150)[1]', 'LEVEL[dBm]', 'GPS_alt[m]']
+VOR_COLUMNS = ['LEVEL[dBm]', 'PHI-90/150[°]', 'PHI-90/90[°]', 'PHI-150/150[°]']
 
-class CSVViewerApp(wx.Frame):
-    def __init__(self, parent, title):
-        super().__init__(parent, title=title, style=wx.DEFAULT_FRAME_STYLE | wx.MAXIMIZE)
-        self.setup_colors()
-
-        self.data = None
-        self.figures = []
-        self.file_path = None
-        self.last_modified_time = None
-        self.selected_columns = []
-        self.process = None
+class CSVViewerApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
 
         self.init_ui()
-        self.load_and_initialize_data()
 
     def init_ui(self):
-        panel = wx.Panel(self)
-        panel.SetBackgroundColour(self.background_color)
+        self.setWindowTitle("CSV Viewer App")
+        self.setGeometry(600, 225, 800, 600)
 
-        main_sizer = wx.BoxSizer(wx.HORIZONTAL)
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
 
-        left_panel = wx.Panel(panel)
-        left_panel.SetBackgroundColour(self.background_color)
-        left_sizer = wx.BoxSizer(wx.VERTICAL)
+        self.main_layout = QHBoxLayout()
+        self.central_widget.setLayout(self.main_layout)
 
-        image_paths = ["D:/Magang/beta_no_icc.png", "D:/Magang/rs_no_icc.png"]
+        self.left_panel = QWidget()
+        self.left_layout = QVBoxLayout()
+        self.left_panel.setLayout(self.left_layout)
+        self.left_panel.setStyleSheet("background-color: #002060; color: white;")
+        self.main_layout.addWidget(self.left_panel, 1)
+
+        self.right_panel = QWidget()
+        self.right_layout = QVBoxLayout()
+        self.right_panel.setLayout(self.right_layout)
+        self.right_panel.setStyleSheet("background-color: #002060;")
+        self.main_layout.addWidget(self.right_panel, 3)
+
+        # Load and display logos with adjusted size
+        logo_layout = QHBoxLayout()
+        logo_layout.setContentsMargins(0, 0, 0, 0)
+        logo_layout.setSpacing(5)
+        self.left_layout.addLayout(logo_layout)
+        image_paths = ["beta_no_icc.png", "rs_no_icc.png"]
         for image_path in image_paths:
-            img = wx.Image(image_path, wx.BITMAP_TYPE_PNG)
-            img = img.Scale(200, int(img.GetHeight() * 200 / img.GetWidth()), wx.IMAGE_QUALITY_HIGH)
-            bmp = wx.StaticBitmap(left_panel, bitmap=wx.Bitmap(img))
-            left_sizer.Add(bmp, 0, wx.ALIGN_CENTER | wx.RIGHT, 10)
+            pixmap = QPixmap(image_path)
+            scaled_pixmap = pixmap.scaled(250, int(pixmap.height() * 250 / pixmap.width()), Qt.KeepAspectRatio)
+            logo_label = QLabel(self)
+            logo_label.setPixmap(scaled_pixmap)
+            logo_label.setAlignment(Qt.AlignCenter)
+            logo_layout.addWidget(logo_label)
 
-        header_text = wx.StaticText(left_panel, label="EVSD1000 Data Viewer")
-        header_text.SetFont(wx.Font(28, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_BOLD))
-        header_text.SetForegroundColour(wx.WHITE)
-        left_sizer.Add(header_text, 0, wx.ALIGN_CENTER | wx.TOP, 10)
+        # Create group box for category selection
+        category_group_box = QGroupBox("Choose Category:")
+        category_group_box.setStyleSheet("color: white; font-size: 30px; font-weight: bold;")
+        category_layout = QVBoxLayout()
+        category_group_box.setLayout(category_layout)
+        self.left_layout.addWidget(category_group_box)
 
-        choose_category_label = wx.StaticText(left_panel, label="Choose Category:")
-        choose_category_label.SetFont(wx.Font(14, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_SEMIBOLD))
-        choose_category_label.SetForegroundColour(wx.WHITE)
-        left_sizer.Add(choose_category_label, 0, wx.ALIGN_LEFT | wx.TOP, 20)
+        self.category_radio_group = QButtonGroup()
+        self.category_radio_buttons = []
+        for i, category in enumerate(["Localizer", "Glidepath", "VOR"]):
+            radio_button = QRadioButton(category)
+            radio_button.setStyleSheet("color: white; font-size: 20px;")
+            self.category_radio_group.addButton(radio_button)
+            category_layout.addWidget(radio_button, alignment=Qt.AlignLeft | Qt.AlignTop)
+            self.category_radio_buttons.append(radio_button)
 
-        self.category_choice = wx.Choice(left_panel, choices=["Localizer", "Glidepath", "VOR"])
-        self.category_choice.SetFont(wx.Font(12, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
-        self.category_choice.Bind(wx.EVT_CHOICE, self.on_category_select)
-        left_sizer.Add(self.category_choice, 0, wx.EXPAND | wx.ALL, 10)
+        self.category_radio_buttons[0].setChecked(True)
 
-        choose_data_label = wx.StaticText(left_panel, label="Choose Data:")
-        choose_data_label.SetFont(wx.Font(14, wx.FONTFAMILY_DEFAULT, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_SEMIBOLD))
-        choose_data_label.SetForegroundColour(wx.WHITE)
-        left_sizer.Add(choose_data_label, 0, wx.ALIGN_LEFT | wx.TOP, 20)
+        # Create group box for data selection
+        data_group_box = QGroupBox("Choose Data to Plot:")
+        data_group_box.setStyleSheet("color: white; font-size: 27px; font-weight: bold;")
+        data_layout = QVBoxLayout()
+        data_group_box.setLayout(data_layout)
+        self.left_layout.addWidget(data_group_box)
 
-        self.checkbox_panel = wx.Panel(left_panel)
-        self.checkbox_panel.SetBackgroundColour(self.background_color)
-        self.checkbox_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.checkbox_panel.SetSizer(self.checkbox_sizer)
-        left_sizer.Add(self.checkbox_panel, 1, wx.EXPAND | wx.ALL, 10)
+        self.checkbox_panel = QWidget()
+        self.checkbox_layout = QVBoxLayout()
+        self.checkbox_layout.setContentsMargins(0, 0, 0, 0)
+        self.checkbox_layout.setSpacing(5)
+        self.checkbox_panel.setLayout(self.checkbox_layout)
+        data_layout.addWidget(self.checkbox_panel)
 
-        button_sizer = wx.BoxSizer(wx.HORIZONTAL)
-
-        self.clear_all_button = wx.Button(left_panel, label="Clear All Choices")
-        self.clear_all_button.Bind(wx.EVT_BUTTON, self.clear_all_selection)
-        button_sizer.Add(self.clear_all_button, 0, wx.ALIGN_LEFT | wx.ALL, 10)
-
-        self.start_button = wx.Button(left_panel, label="Start Stream")
-        self.start_button.Bind(wx.EVT_BUTTON, self.start_stream)
-        button_sizer.Add(self.start_button, 0, wx.ALIGN_LEFT | wx.ALL, 10)
-
-        self.stop_button = wx.Button(left_panel, label="Stop Stream")
-        self.stop_button.Bind(wx.EVT_BUTTON, self.stop_stream)
-        button_sizer.Add(self.stop_button, 0, wx.ALIGN_LEFT | wx.ALL, 10)
-
-        button_sizer.AddStretchSpacer()
-
-        self.save_button = wx.Button(left_panel, label="Save PDF")
-        self.save_button.Bind(wx.EVT_BUTTON, self.save_to_pdf)
-        button_sizer.Add(self.save_button, 0, wx.ALIGN_LEFT | wx.ALL, 10)
-
-        left_sizer.Add(button_sizer, 0, wx.EXPAND | wx.ALL, 10)
-
-        left_panel.SetSizer(left_sizer)
-        main_sizer.Add(left_panel, 1, wx.EXPAND | wx.ALL, 10)
-
-        self.figure_panel = wx.Panel(panel)
-        self.figure_sizer = wx.BoxSizer(wx.VERTICAL)
-        self.figure_panel.SetSizer(self.figure_sizer)
-        main_sizer.Add(self.figure_panel, 2, wx.EXPAND | wx.ALL, 10)
-
-        panel.SetSizer(main_sizer)
-
-        self.Bind(wx.EVT_CLOSE, self.on_close)
-
-    def setup_colors(self):
-        self.background_color = "#002060"
-
-    def clear_all_selection(self, event):
-        for checkbox in self.checkboxes:
-            checkbox.SetValue(False)
-        self.selected_columns.clear()
-        self.update_plot()
-
-    def read_csv_file(self, file_path):
-        return pd.read_csv(file_path, encoding='latin1').tail(100)
-
-    def plot_line(self, data, figsize=(10, 6)):  
-        fig, axes = plt.subplots(len(data.columns), 1, figsize=figsize, sharex=True)
-        
-        # Check if data.columns is not empty
-        if len(data.columns) > 0:
-            if len(data.columns) == 1:
-                axes = [axes]  # Ensure axes is a list when there's only one column
-
-            for i, column in enumerate(data.columns):
-                axes[i].plot(data.index, data[column], label=column)
-                axes[i].legend()
-
-            fig.tight_layout()
-            self.figures.append(fig)
-
-    def update_plot(self):
-        try:
-            self.data = self.read_csv_file(self.file_path)
-            self.figures.clear()
-            if self.selected_columns:
-                self.plot_line(self.data[self.selected_columns])
-            else:
-                self.plot_line(self.data)
-            self.update_figure_panel()
-        except Exception as e:
-            logging.error(f"Failed to update plot: {str(e)}")
-
-    def update_figure_panel(self):
-        self.figure_sizer.Clear(True)
-        if self.figures:
-            for fig in self.figures:
-                canvas = FigureCanvas(self.figure_panel, -1, fig)
-                self.figure_sizer.Add(canvas, 1, wx.EXPAND)
-        self.figure_panel.Layout()
-
-    def start_polling(self):
-        self.polling_timer = wx.Timer(self)
-        self.Bind(wx.EVT_TIMER, self.poll_file_changes, self.polling_timer)
-        self.polling_timer.Start(int(DELAY * 1000))
-
-    def poll_file_changes(self, event):
-        if self.file_path:
-            try:
-                current_modified_time = os.path.getmtime(self.file_path)
-                if self.last_modified_time != current_modified_time:
-                    self.last_modified_time = current_modified_time
-                    self.update_plot()
-            except Exception as e:
-                logging.error(f"Error polling file: {str(e)}")
-
-    def load_and_initialize_data(self):
-        try:
-            self.update_column_list()
-            self.update_plot()
-            if self.file_path:
-                self.last_modified_time = os.path.getmtime(self.file_path)
-                self.start_polling()
-        except Exception as e:
-            logging.error(f"Failed to load file: {str(e)}")
-
-    def update_column_list(self):
-        self.checkbox_sizer.Clear(True)
         self.checkboxes = []
 
-        category = self.category_choice.GetStringSelection()
+        self.figure, self.ax = plt.subplots()
+        self.canvas = FigureCanvas(self.figure)
+        self.right_layout.addWidget(self.canvas)
+
+        self.start_button = QPushButton("Start Stream")
+        self.start_button.setStyleSheet("background-color: white; color: black; font-size: 14px;")
+        self.start_button.clicked.connect(self.start_stream)
+        self.left_layout.addWidget(self.start_button)
+
+        self.stop_button = QPushButton("Stop Stream")
+        self.stop_button.setStyleSheet("background-color: white; color: black; font-size: 14px;")
+        self.stop_button.clicked.connect(self.stop_stream)
+        self.left_layout.addWidget(self.stop_button)
+
+        self.save_button = QPushButton("Save PDF")
+        self.save_button.setStyleSheet("background-color: white; color: black; font-size: 14px;")
+        self.save_button.clicked.connect(self.save_to_pdf)
+        self.left_layout.addWidget(self.save_button)
+
+        self.data = None
+        self.file_path = None
+        self.selected_columns = []
+        self.process = None
+        self.animation = None
+
+        self.update_column_list()
+
+        for radio_button in self.category_radio_buttons:
+            radio_button.toggled.connect(self.update_column_list)
+
+        self.setStyleSheet("background-color: #002060; color: white;")
+
+    def update_column_list(self):
+        while self.checkbox_layout.count():
+            item = self.checkbox_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        
+        self.checkboxes.clear()
+
+        category = self.category_radio_group.checkedButton().text()
         columns = []
 
         if category == "Localizer":
@@ -202,65 +152,109 @@ class CSVViewerApp(wx.Frame):
             columns = VOR_COLUMNS
 
         for column in columns:
-            checkbox = wx.CheckBox(self.checkbox_panel, label=column)
-            checkbox.SetForegroundColour(wx.WHITE)  # Set text color of checkboxes
-            checkbox.Bind(wx.EVT_CHECKBOX, self.on_checkbox_toggle)
+            checkbox = QCheckBox(column)
+            checkbox.setStyleSheet("color: white; font-size: 14px;")
+            self.checkbox_layout.addWidget(checkbox)
             self.checkboxes.append(checkbox)
-            self.checkbox_sizer.Add(checkbox, 0, wx.EXPAND | wx.ALL, 5)
 
-        self.checkbox_panel.Layout()
-
-    def on_checkbox_toggle(self, event):
-        checkbox = event.GetEventObject()
-        if checkbox.GetValue():
-            self.selected_columns.append(checkbox.GetLabel())
-        else:
-            self.selected_columns.remove(checkbox.GetLabel())
+        self.selected_columns.clear()
         self.update_plot()
 
-    def on_category_select(self, event):
-        self.update_column_list()
-        self.update_plot()
+    def read_csv_file(self, file_path):
+        return pd.read_csv(file_path, encoding='latin1')
 
-    def save_to_pdf(self, event):
-        with wx.FileDialog(self, "Save PDF", wildcard="PDF files (*.pdf)|*.pdf",
-                           style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as file_dialog:
-            if file_dialog.ShowModal() == wx.ID_CANCEL:
-                return
+    def plot_line(self, data):
+        self.figure.clear()
+        num_plots = len(self.selected_columns)
+        
+        self.axs = self.figure.subplots(num_plots, 1, sharex=True)
+        
+        if num_plots == 1:
+            self.axs = [self.axs]
+        
+        for ax, column in zip(self.axs, self.selected_columns):
+            ax.plot(data.index, data[column], label=column)
+            ax.set_ylabel(column)
+            ax.legend()
+            
+            last_value = data[column].iloc[-1]
+            ax.text(1.01, 0.5, f'{last_value:.2f}', transform=ax.transAxes, va='center', fontsize=12, color='black')
+        
+        self.figure.tight_layout()
+        self.canvas.draw()
 
-            file_path = file_dialog.GetPath()
+    def update_plot(self, *args):
+        self.selected_columns = [checkbox.text() for checkbox in self.checkboxes if checkbox.isChecked()]
+        if self.file_path and self.selected_columns:
             try:
-                with PdfPages(file_path) as pdf:
-                    for fig in self.figures:
-                        pdf.savefig(fig)
-                wx.MessageBox("PDF saved successfully.", "Success", wx.OK | wx.ICON_INFORMATION)
+                print(f"Reading data from {self.file_path}")
+                self.data = self.read_csv_file(self.file_path)
+                print(f"Selected columns: {self.selected_columns}")
+                if not self.data.empty and all(col in self.data.columns for col in self.selected_columns):
+                    print(f"Data preview:\n{self.data[self.selected_columns].head()}")
+                    self.plot_line(self.data[self.selected_columns])
+                else:
+                    print("No data to plot or selected columns not in data.")
+                    self.figure.clear()
+                    self.canvas.draw()
             except Exception as e:
-                wx.MessageBox(f"Failed to save PDF: {str(e)}", "Error", wx.OK | wx.ICON_ERROR)
+                print(f"Error reading data: {e}")
+                self.figure.clear()
+                self.canvas.draw()
+        else:
+            print("File path or selected columns are not set.")
+            self.figure.clear()
+            self.canvas.draw()
 
-    def start_stream(self, event):
+    def start_stream(self):
+        if self.process is not None:
+            self.show_message("Warning", "Stream already started")
+            return
+        
+        self.process = subprocess.Popen(['python', SCRIPT_PATH])
+        
+        if self.animation is None:
+            self.animation = FuncAnimation(self.figure, self.update_plot, interval=DELAY * 1000)
+            self.canvas.draw()
+        
+        self.show_message("Info", "Streaming started")
+
+    def stop_stream(self):
         if self.process is None:
-            self.process = subprocess.Popen(['python', SCRIPT_PATH])
-            wx.MessageBox("Streaming started", "Info", wx.OK | wx.ICON_INFORMATION)
-        else:
-            wx.MessageBox("Streaming already running", "Warning", wx.OK | wx.ICON_WARNING)
+            self.show_message("Warning", "Stream already stopped")
+            return
+        
+        self.process.terminate()
+        self.process = None
+        
+        if self.animation is not None:
+            self.animation.event_source.stop()
+            self.animation = None
+        
+        self.show_message("Info", "Streaming stopped")
 
-    def stop_stream(self, event):
+    def save_to_pdf(self):
+        file_dialog = QFileDialog(self, "Save PDF", "", "PDF files (*.pdf)|*.pdf")
+        file_dialog.setAcceptMode(QFileDialog.AcceptSave)
+        if file_dialog.exec_() == QFileDialog.Accepted:
+            file_path = file_dialog.selectedFiles()[0]
+            self.figure.savefig(file_path, format='pdf')
+            self.show_message("Info", f"PDF saved successfully to {file_path}")
+
+    def show_message(self, title, message):
+        msg_box = QMessageBox()
+        msg_box.setWindowTitle(title)
+        msg_box.setText(message)
+        msg_box.setStyleSheet("QMessageBox {background-color: grey;} QPushButton {background-color: #002060; color: white;}")
+        msg_box.exec_()
+
+    def closeEvent(self, event):
         if self.process is not None:
             self.process.terminate()
-            self.process = None
-            wx.MessageBox("Streaming stopped", "Info", wx.OK | wx.ICON_INFORMATION)
-        else:
-            wx.MessageBox("No streaming process to stop", "Warning", wx.OK | wx.ICON_WARNING)
-
-    def on_close(self, event):
-        if hasattr(self, 'polling_timer'):
-            self.polling_timer.Stop()
-        if self.process is not None:
-            self.process.terminate()
-        self.Destroy()
+        event.accept()
 
 if __name__ == "__main__":
-    app = wx.App()
-    frame = CSVViewerApp(None, title="EVSD1000 Data Viewer")
-    frame.Show()
-    app.MainLoop()
+    app = QApplication(sys.argv)
+    window = CSVViewerApp()
+    window.show()
+    sys.exit(app.exec_())
