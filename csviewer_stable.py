@@ -187,14 +187,14 @@ class CSVViewerApp(QMainWindow):
         self.selected_columns = [checkbox.text() for checkbox in self.checkboxes if checkbox.isChecked()]
         if self.file_path and self.selected_columns:
             try:
-                print(f"Reading data from {self.file_path}")
+                # print(f"Reading data from {self.file_path}")
                 self.data = self.read_csv_file(self.file_path)
-                print(f"Selected columns: {self.selected_columns}")
+                # print(f"Selected columns: {self.selected_columns}")
                 if not self.data.empty and all(col in self.data.columns for col in self.selected_columns):
-                    print(f"Data preview:\n{self.data[self.selected_columns].head()}")
+                    # print(f"Data preview:\n{self.data[self.selected_columns].head()}")
                     self.plot_line(self.data[self.selected_columns])
                 else:
-                    print("No data to plot or selected columns not in data.")
+                    # print("No data to plot or selected columns not in data.")
                     self.figure.clear()
                     self.canvas.draw()
             except Exception as e:
@@ -202,7 +202,7 @@ class CSVViewerApp(QMainWindow):
                 self.figure.clear()
                 self.canvas.draw()
         else:
-            print("File path or selected columns are not set.")
+            # print("File path or selected columns are not set.")
             self.figure.clear()
             self.canvas.draw()
 
@@ -214,7 +214,7 @@ class CSVViewerApp(QMainWindow):
         self.process = subprocess.Popen(['python', SCRIPT_PATH])
         
         if self.animation is None:
-            self.animation = FuncAnimation(self.figure, self.update_plot, interval=DELAY * 1000)
+            self.animation = FuncAnimation(self.figure, self.update_plot, interval=DELAY * 500)
             self.canvas.draw()
         
         self.show_message("Info", "Streaming started")
