@@ -209,9 +209,16 @@ class CSVViewerApp(QMainWindow):
 
             last_value = data[column].iloc[-1]
             ax.text(1.01, 0.5, f'{last_value:.2f}', transform=ax.transAxes, va='center', fontsize=12, color='black')
+            
+            # Adjust y-limits to add margin
+            y_min = data[column].min()
+            y_max = data[column].max()
+            y_margin = (y_max - y_min) * 1.5  # 10% margin
+            ax.set_ylim(y_min - y_margin, y_max + y_margin)
         
         self.figure.tight_layout()
         self.canvas.draw()
+
 
     def update_plot(self, *args):
         self.selected_columns = [checkbox.text() for checkbox in self.checkboxes if checkbox.isChecked()]
