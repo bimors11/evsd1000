@@ -6,7 +6,7 @@ import subprocess
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.animation import FuncAnimation
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QRadioButton, QButtonGroup, QCheckBox, QPushButton, QFileDialog, QMessageBox, QHBoxLayout, QLabel, QGroupBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QRadioButton, QButtonGroup, QCheckBox, QPushButton, QFileDialog, QMessageBox, QHBoxLayout, QLabel, QGroupBox, QSlider
 from PyQt5.QtGui import QPixmap, QFont
 from PyQt5.QtCore import Qt
 
@@ -29,7 +29,7 @@ class CSVViewerApp(QMainWindow):
 
     def init_ui(self):
         self.setWindowTitle("CSV Viewer App")
-        self.setGeometry(600, 225, 800, 600)
+        self.setGeometry(500, 170, 1000, 800)
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -41,26 +41,27 @@ class CSVViewerApp(QMainWindow):
         self.left_layout = QVBoxLayout()
         self.left_panel.setLayout(self.left_layout)
         self.left_panel.setStyleSheet("background-color: #002060; color: white;")
-        self.main_layout.addWidget(self.left_panel, 1)
+        self.main_layout.addWidget(self.left_panel)
+        self.left_panel.setMaximumWidth(400)  # Atur nilai sesuai kebutuhan
 
         self.right_panel = QWidget()
         self.right_layout = QVBoxLayout()
         self.right_panel.setLayout(self.right_layout)
         self.right_panel.setStyleSheet("background-color: #002060;")
-        self.main_layout.addWidget(self.right_panel, 3)
+        self.main_layout.addWidget(self.right_panel)
+        self.right_panel.setMaximumWidth(9000)  # Atur nilai sesuai kebutuhan
 
         # Load and display logos with adjusted size
-        logo_layout = QHBoxLayout()
+        logo_layout = QVBoxLayout()
         logo_layout.setContentsMargins(0, 0, 0, 0)
-        logo_layout.setSpacing(5)
         self.left_layout.addLayout(logo_layout)
         image_paths = ["beta_no_icc.png", "rs_no_icc.png"]
         for image_path in image_paths:
             pixmap = QPixmap(image_path)
-            scaled_pixmap = pixmap.scaled(250, int(pixmap.height() * 250 / pixmap.width()), Qt.KeepAspectRatio)
+            scaled_pixmap = pixmap.scaled(300, int(pixmap.height() * 300 / pixmap.width()), Qt.KeepAspectRatio)
             logo_label = QLabel(self)
             logo_label.setPixmap(scaled_pixmap)
-            logo_label.setAlignment(Qt.AlignCenter)
+            logo_label.setAlignment(Qt.AlignTop)
             logo_layout.addWidget(logo_label)
 
         # Create group box for category selection
@@ -100,6 +101,34 @@ class CSVViewerApp(QMainWindow):
         self.figure, self.ax = plt.subplots()
         self.canvas = FigureCanvas(self.figure)
         self.right_layout.addWidget(self.canvas)
+
+        # Add slider for adjusting total data displayed
+        total_slider_layout = QHBoxLayout()
+        total_slider_label = QLabel("Total Data Displayed:")
+        total_slider_label.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
+        total_slider_layout.addWidget(total_slider_label)
+        self.slider_total = QSlider(Qt.Horizontal)
+        self.slider_total.setRange(1, 100)
+        self.slider_total.setValue(100)
+        self.slider_total.setTickPosition(QSlider.TicksBelow)
+        self.slider_total.setTickInterval(10)
+        self.slider_total.valueChanged.connect(self.update_plot)
+        total_slider_layout.addWidget(self.slider_total)
+        self.right_layout.addLayout(total_slider_layout)
+
+        # Add slider for adjusting data range displayed
+        range_slider_layout = QHBoxLayout()
+        range_slider_label = QLabel("Data Range:")
+        range_slider_label.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
+        range_slider_layout.addWidget(range_slider_label)
+        self.slider_range = QSlider(Qt.Horizontal)
+        self.slider_range.setRange(0, 100)
+        self.slider_range.setValue(0)
+        self.slider_range.setTickPosition(QSlider.TicksBelow)
+        self.slider_range.setTickInterval(10)
+        self.slider_range.valueChanged.connect(self.update_plot)
+        range_slider_layout.addWidget(self.slider_range)
+        self.right_layout.addLayout(range_slider_layout)
 
         self.start_button = QPushButton("Start Stream")
         self.start_button.setStyleSheet("background-color: white; color: black; font-size: 14px;")
@@ -153,7 +182,7 @@ class CSVViewerApp(QMainWindow):
 
         for column in columns:
             checkbox = QCheckBox(column)
-            checkbox.setStyleSheet("color: white; font-size: 14px;")
+            checkbox.setStyleSheet("color: white; font-size: 14px; font-weight: bold;")
             self.checkbox_layout.addWidget(checkbox)
             self.checkboxes.append(checkbox)
 
@@ -176,7 +205,8 @@ class CSVViewerApp(QMainWindow):
             ax.plot(data.index, data[column], label=column)
             ax.set_ylabel(column)
             ax.legend()
-            
+            ax.grid(True)  # Enable grid
+
             last_value = data[column].iloc[-1]
             ax.text(1.01, 0.5, f'{last_value:.2f}', transform=ax.transAxes, va='center', fontsize=12, color='black')
         
@@ -185,16 +215,25 @@ class CSVViewerApp(QMainWindow):
 
     def update_plot(self, *args):
         self.selected_columns = [checkbox.text() for checkbox in self.checkboxes if checkbox.isChecked()]
-        if self.file_path and self.selected_columns:
+        
+        if self.file_path:
             try:
-                # print(f"Reading data from {self.file_path}")
                 self.data = self.read_csv_file(self.file_path)
-                # print(f"Selected columns: {self.selected_columns}")
                 if not self.data.empty and all(col in self.data.columns for col in self.selected_columns):
-                    # print(f"Data preview:\n{self.data[self.selected_columns].head()}")
-                    self.plot_line(self.data[self.selected_columns])
+                    max_data = len(self.data)
+                    
+                    # Adjust data range
+                    total_display_count = int(self.slider_total.value() / 100 * max_data)
+                    range_start = int(self.slider_range.value() / 100 * max_data)
+                    range_end = min(range_start + total_display_count, max_data)
+
+                    # Plot the data based on the selected range
+                    if range_start < range_end:
+                        self.plot_line(self.data[self.selected_columns].iloc[range_start:range_end])
+                    else:
+                        self.figure.clear()
+                        self.canvas.draw()
                 else:
-                    # print("No data to plot or selected columns not in data.")
                     self.figure.clear()
                     self.canvas.draw()
             except Exception as e:
@@ -202,13 +241,12 @@ class CSVViewerApp(QMainWindow):
                 self.figure.clear()
                 self.canvas.draw()
         else:
-            # print("File path or selected columns are not set.")
             self.figure.clear()
             self.canvas.draw()
 
     def start_stream(self):
         if self.process is not None:
-            self.show_message("Warning", "Stream already started")
+            self.show_message("WARNING!", "Stream already started")
             return
         
         self.process = subprocess.Popen(['python', SCRIPT_PATH])
@@ -217,11 +255,11 @@ class CSVViewerApp(QMainWindow):
             self.animation = FuncAnimation(self.figure, self.update_plot, interval=DELAY * 500)
             self.canvas.draw()
         
-        self.show_message("Info", "Streaming started")
+        self.show_message("INFO!", "Streaming started")
 
     def stop_stream(self):
         if self.process is None:
-            self.show_message("Warning", "Stream already stopped")
+            self.show_message("WARNING!", "Stream already stopped")
             return
         
         self.process.terminate()
@@ -231,7 +269,7 @@ class CSVViewerApp(QMainWindow):
             self.animation.event_source.stop()
             self.animation = None
         
-        self.show_message("Info", "Streaming stopped")
+        self.show_message("INFO!", "Streaming stopped")
 
     def save_to_pdf(self):
         file_dialog = QFileDialog(self, "Save PDF", "", "PDF files (*.pdf)|*.pdf")
@@ -245,7 +283,7 @@ class CSVViewerApp(QMainWindow):
         msg_box = QMessageBox()
         msg_box.setWindowTitle(title)
         msg_box.setText(message)
-        msg_box.setStyleSheet("QMessageBox {background-color: grey;} QPushButton {background-color: #002060; color: white;}")
+        msg_box.setStyleSheet("QMessageBox {background-color: white;} QPushButton {background-color: #002060; color: white;}")
         msg_box.exec_()
 
     def closeEvent(self, event):
@@ -256,5 +294,5 @@ class CSVViewerApp(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = CSVViewerApp()
-    window.show()
+    window.showMaximized()
     sys.exit(app.exec_())
