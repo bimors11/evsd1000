@@ -2,15 +2,15 @@ import sys
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QCheckBox, QFormLayout, QLabel, QComboBox)
-from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QFileDialog, QVBoxLayout, QHBoxLayout, QWidget, QSlider, QPushButton, QCheckBox, QFormLayout, QGroupBox, QLabel, QRadioButton, QButtonGroup, QSpacerItem, QSizePolicy)
+from PyQt5.QtGui import QPixmap, QFont
 from PyQt5.QtCore import Qt, QTimer
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import subprocess
 import matplotlib.image as mpimg
-import numpy as np
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib import image as mpimg
 
 class DataPlotter(QMainWindow):
     def __init__(self):
@@ -31,7 +31,7 @@ class DataPlotter(QMainWindow):
         # Left panel for controls
         self.left_panel = QWidget()
         self.left_panel.setStyleSheet("background-color: #002060; color: white;")
-        self.left_panel.setFixedWidth(200)
+        self.left_panel.setFixedWidth(250)
         self.left_layout = QVBoxLayout()
         self.left_panel.setLayout(self.left_layout)
         self.main_layout.addWidget(self.left_panel)
@@ -46,30 +46,75 @@ class DataPlotter(QMainWindow):
         # Setup for logos
         self.logo_layout = QVBoxLayout()
         self.logo_layout.setContentsMargins(0, 0, 0, 0)
-        self.logo_layout.setSpacing(5)
+        self.logo_layout.setSpacing(2)
         self.left_layout.addLayout(self.logo_layout)
         self.addLogos()
         
-        # CSV file selection
-        self.file_button = QPushButton('Select CSV File')
-        self.file_button.clicked.connect(self.select_file)
-        self.left_layout.addWidget(self.file_button)
+        # Add a spacer to keep logos at the top
+        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        self.left_layout.addItem(spacer)
         
-        # Mode selection
-        self.mode_combo = QComboBox()
-        self.mode_combo.addItems(['Select Mode', 'VOR', 'ILS', 'GP'])
-        self.mode_combo.currentIndexChanged.connect(self.update_mode)
-        self.left_layout.addWidget(self.mode_combo)
+        # GroupBox for radio buttons
+        self.radio_group_box = QGroupBox("Select Mode")
+        self.radio_group_box.setStyleSheet("color: white; font-size: 23px; font-weight: bold;")
+        self.radio_button_layout = QVBoxLayout()
+        self.radio_group_box.setLayout(self.radio_button_layout)
+        self.left_layout.addWidget(self.radio_group_box)
+        
+        # CSV file selection via radio buttons
+        self.csv_group = QButtonGroup(self)
+        self.update_csv_list()
+        
+        # Add a spacer between radio buttons and Save PDF button
+        self.left_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+        # GroupBox for checkboxes
+        self.checkbox_group_box = QGroupBox("Select Data")
+        self.checkbox_group_box.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
+        self.checkbox_layout = QFormLayout()
+        self.checkbox_group_box.setLayout(self.checkbox_layout)
+        self.left_layout.addWidget(self.checkbox_group_box)
         
         # Checkboxes for column selection
         self.checkboxes = {}
-        self.checkbox_layout = QFormLayout()
-        self.left_layout.addLayout(self.checkbox_layout)
-        
+
+        self.checkbox_group_box.setFixedHeight(200)
+
+        # Add a spacer between radio buttons and Save PDF button
+        self.left_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
         # Plot area
         self.figure = Figure()
         self.canvas = FigureCanvas(self.figure)
         self.right_layout.addWidget(self.canvas)
+
+        # Add slider for adjusting total data displayed
+        total_slider_layout = QHBoxLayout()
+        total_slider_label = QLabel("Total Data Displayed:")
+        total_slider_label.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
+        total_slider_layout.addWidget(total_slider_label)
+        self.slider_total = QSlider(Qt.Horizontal)
+        self.slider_total.setRange(1, 100)
+        self.slider_total.setValue(100)
+        self.slider_total.setTickPosition(QSlider.TicksBelow)
+        self.slider_total.setTickInterval(10)
+        self.slider_total.valueChanged.connect(self.update_plot)
+        total_slider_layout.addWidget(self.slider_total)
+        self.right_layout.addLayout(total_slider_layout)
+
+        # Add slider for adjusting data range displayed
+        range_slider_layout = QHBoxLayout()
+        range_slider_label = QLabel("Data Range:")
+        range_slider_label.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
+        range_slider_layout.addWidget(range_slider_label)
+        self.slider_range = QSlider(Qt.Horizontal)
+        self.slider_range.setRange(0, 100)
+        self.slider_range.setValue(0)
+        self.slider_range.setTickPosition(QSlider.TicksBelow)
+        self.slider_range.setTickInterval(10)
+        self.slider_range.valueChanged.connect(self.update_plot)
+        range_slider_layout.addWidget(self.slider_range)
+        self.right_layout.addLayout(range_slider_layout)
         
         # Buttons for saving PDF and connecting controller
         self.save_pdf_button = QPushButton('Save PDF')
@@ -92,22 +137,49 @@ class DataPlotter(QMainWindow):
         self.gps_lat = None
         self.gps_long = None
         
+        # Set button styles
+        self.set_button_styles()
+
+    def set_button_styles(self):
+        button_style = "background-color: white; color: black;"
+        self.save_pdf_button.setStyleSheet(button_style)
+        self.connect_controller_button.setStyleSheet(button_style)
+        
     def addLogos(self):
         image_paths = ["beta_no_icc.png", "rs_no_icc.png"]
         for image_path in image_paths:
             if os.path.exists(image_path):
                 pixmap = QPixmap(image_path)
-                scaled_pixmap = pixmap.scaled(150, int(pixmap.height() * 150 / pixmap.width()), Qt.KeepAspectRatio)
+                scaled_pixmap = pixmap.scaled(200, int(pixmap.height() * 200 / pixmap.width()), Qt.KeepAspectRatio)
                 logo_label = QLabel(self)
                 logo_label.setPixmap(scaled_pixmap)
                 logo_label.setAlignment(Qt.AlignCenter)
                 self.logo_layout.addWidget(logo_label)
-    
+
+    def update_csv_list(self):
+        # Clear existing radio buttons
+        for button in self.csv_group.buttons():
+            self.csv_group.removeButton(button)
+            button.setParent(None)
+        
+        # Clear existing radio buttons layout
+        for i in range(self.radio_button_layout.count()):
+            widget = self.radio_button_layout.itemAt(i).widget()
+            if widget:
+                widget.deleteLater()
+        
+        csv_files = [f for f in os.listdir('.') if f.endswith('.csv')]
+        for csv_file in csv_files:
+            radio_button = QRadioButton(csv_file)
+            radio_button.clicked.connect(self.select_file)
+            self.csv_group.addButton(radio_button)
+            self.radio_button_layout.addWidget(radio_button)
+
     def select_file(self):
-        options = QFileDialog.Options()
-        file_name, _ = QFileDialog.getOpenFileName(self, "Select CSV File", "", "CSV Files (*.csv);;All Files (*)", options=options)
-        if file_name:
-            self.file_path = file_name
+        self.clear_plot()  # Clear the plot area when selecting a new file
+        selected_button = self.sender()
+        if selected_button:
+            self.file_path = selected_button.text()
             self.detect_mode()
             self.update_checkboxes()
     
@@ -120,11 +192,6 @@ class DataPlotter(QMainWindow):
             self.mode = 'GP'
         else:
             self.mode = ''
-        self.mode_combo.setCurrentText(self.mode)
-    
-    def update_mode(self):
-        self.mode = self.mode_combo.currentText()
-        self.update_checkboxes()
     
     def update_checkboxes(self):
         for checkbox in self.checkboxes.values():
@@ -137,7 +204,14 @@ class DataPlotter(QMainWindow):
             self.checkboxes[column] = checkbox
 
         if self.file_path:
-            self.data = pd.read_csv(self.file_path)
+            encodings_to_try = ['utf-8', 'latin1', 'ISO-8859-1']
+            for encoding in encodings_to_try:
+                try:
+                    self.data = pd.read_csv(self.file_path, encoding=encoding)
+                    break  # If reading is successful, break out of the loop
+                except UnicodeDecodeError:
+                    continue  # If a UnicodeDecodeError occurs, try the next encoding
+            
             if len(self.data) > 4:
                 if 'GPS_lat.' in self.data.columns:
                     self.gps_lat = self.data.iloc[4]['GPS_lat.']
@@ -149,7 +223,6 @@ class DataPlotter(QMainWindow):
                 else:
                     self.gps_long = None
 
-
     def get_columns(self):
         if self.mode == 'VOR':
             return ['LEVEL[dBm]', 'BEARING(from)[°]', 'FM-DEV.[Hz]', 'FM-INDEX']
@@ -160,58 +233,72 @@ class DataPlotter(QMainWindow):
         return []
     
     def update_plot(self):
-        if self.file_path and not self.data.empty:
-            self.figure.clear()
-            selected_columns = [col for col, checkbox in self.checkboxes.items() if checkbox.isChecked()]
-            if selected_columns:
-                for i, column in enumerate(selected_columns):
-                    if column in self.data.columns:
-                        ax = self.figure.add_subplot(len(selected_columns), 1, i + 1)
+        if self.file_path:
+            encodings_to_try = ['utf-8', 'latin1', 'ISO-8859-1']
+            for encoding in encodings_to_try:
+                try:
+                    self.data = pd.read_csv(self.file_path, encoding=encoding)
+                    break
+                except UnicodeDecodeError:
+                    continue
 
-                        # Convert data to numeric, forcing errors to NaN
-                        self.data[column] = pd.to_numeric(self.data[column], errors='coerce')
+            if not self.data.empty:
+                self.figure.clear()
+                selected_columns = [col for col, checkbox in self.checkboxes.items() if checkbox.isChecked()]
+                if selected_columns:
+                    # Determine the range of data to be plotted
+                    total_data_points = self.slider_total.value()
+                    data_range_start = self.slider_range.value()
+                    data_range_end = min(data_range_start + total_data_points, len(self.data))
 
-                        # Drop rows with NaN values to avoid plotting issues
-                        column_data = self.data[column].dropna()
+                    for i, column in enumerate(selected_columns):
+                        if column in self.data.columns:
+                            ax = self.figure.add_subplot(len(selected_columns), 1, i + 1)
+                            
+                            # Slice data according to slider values
+                            column_data = self.data[column].iloc[data_range_start:data_range_end].dropna()
 
-                        # Check if there's valid data to plot
-                        if column_data.empty:
-                            continue
+                            if column_data.empty:
+                                continue
 
-                        ax.plot(column_data.index, column_data, label=column)
-                        ax.grid(True)
-                        ax.legend()
-                        ax.set_xlabel('Time', fontsize=9)
-                        ax.set_ylabel(column, fontsize=9)
-                        ax.tick_params(axis='both', which='major', labelsize=8)
+                            ax.plot(column_data.index, column_data, label=column)
+                            ax.grid(True)
+                            ax.legend()
+                            ax.set_xlabel('Time', fontsize=9)
+                            ax.set_ylabel(column, fontsize=9)
+                            ax.tick_params(axis='both', which='major', labelsize=8)
 
-                        # Set Y-axis ticks with intervals of 1 or 2 units
-                        y_min, y_max = column_data.min(), column_data.max()
-                        range_span = y_max - y_min
-                        interval = 2 if range_span > 10 else 1
-                        y_ticks = np.arange(np.floor(y_min), np.ceil(y_max) + interval, interval)
-                        ax.set_yticks(y_ticks)
+                            y_min, y_max = column_data.min(), column_data.max()
+                            y_margin = (y_max - y_min) * 2.5
+                            ax.set_ylim(y_min - y_margin, y_max + y_margin)
 
-                self.canvas.draw()
+                            last_value = column_data.iloc[-1]
+                            ax.text(1.01, 0.5, f'{last_value:.2f}', transform=ax.transAxes, va='center', fontsize=12, color='black')
 
+                    self.canvas.draw()
+
+
+    def clear_plot(self):
+        self.figure.clear()
+        self.canvas.draw()
+    
     def save_plot(self):
         if self.file_path and not self.data.empty:
             pdf_path, _ = QFileDialog.getSaveFileName(self, "Save PDF File", "", "PDF Files (*.pdf);;All Files (*)")
             if pdf_path:
-                from matplotlib.backends.backend_pdf import PdfPages
-                from matplotlib import image as mpimg
-
+                # Ukuran A4 dalam inci
+                a4_width, a4_height = 8.27, 11.69  # Lebar dan tinggi dalam inci
+                
                 # Determine the number of selected columns
                 selected_columns = [col for col, checkbox in self.checkboxes.items() if checkbox.isChecked()]
                 num_plots = len(selected_columns)
                 
-                # Calculate figure height dynamically based on the number of plots
-                fig_height = 3 + num_plots * 1.5  # Base height + height per plot
-                fig = plt.figure(figsize=(8.27, fig_height))  # Width is fixed (A4 width), height is dynamic
+                # Ukuran figur tetap ke ukuran A4
+                fig = plt.figure(figsize=(a4_width, a4_height))
                 fig.subplots_adjust(top=0.85, bottom=0.1, left=0.1, right=0.9, hspace=0.4)  # Adjust margins and spacing
 
                 # Add the logo at the top
-                logo_ax = fig.add_axes([0.1, 0.88, 0.8, 0.07])  # [left, bottom, width, height] in figure fraction
+                logo_ax = fig.add_axes([0.1, 0.9, 0.8, 0.07])  # [left, bottom, width, height] in figure fraction
                 logo_ax.axis('off')
                 image_path = 'rsxbeta.png'
                 if os.path.exists(image_path):
@@ -219,29 +306,43 @@ class DataPlotter(QMainWindow):
                     logo_ax.imshow(img, aspect='auto')
 
                 # Add header information
-                header_ax = fig.add_axes([0.1, 0.80, 0.8, 0.08])  # Adjust position and size as needed
+                header_ax = fig.add_axes([0.1, 0.80, 0.8, 0.05])  # Adjust position and size as needed
                 header_ax.axis('off')
                 gps_info = f'GPS: Lat {self.gps_lat}, Long {self.gps_long}' if self.gps_lat and self.gps_long else ''
                 header_ax.text(0.5, 0.5,
-                            f'MODE: {self.mode}\n'
-                            f'DATE: {pd.Timestamp.now().strftime("%Y-%m-%d")}\n'
-                            f'TIME: {pd.Timestamp.now().strftime("%H:%M:%S")}\n'
+                            f'MODE: {self.mode}\n\n'
+                            f'DATE: {pd.Timestamp.now().strftime("%Y-%m-%d")}\n\n'
+                            f'TIME: {pd.Timestamp.now().strftime("%H:%M:%S")}\n\n'
                             f'{gps_info}',
                             fontsize=12,
                             ha='center',
                             va='center')
 
                 # Add plots
-                plot_height = 0.65 / num_plots  # Total height reserved for plots is 0.65 of the figure
+                plot_height = 0.1  # Set a fixed plot height
+                plot_spacing = 0.1  # Fixed spacing between plots
+                start_height = 0.6  # Starting height for the first plot
+
                 for i, column in enumerate(selected_columns):
                     if column in self.data.columns:
-                        ax = fig.add_axes([0.1, 0.10 + (num_plots - i - 1) * plot_height, 0.8, plot_height - 0.05])  # Adjust position dynamically
-                        ax.plot(self.data.index, self.data[column], label=column)
+                        # Calculate the position of each plot
+                        plot_bottom = start_height - (i * (plot_height //+ plot_spacing))
+                        ax = fig.add_axes([0.1, plot_bottom, 0.8, plot_height])  # Fixed position for each plot
+                        column_data = self.data[column].dropna()
+                        ax.plot(self.data.index, column_data, label=column)
                         ax.grid(True)
                         ax.legend()
                         ax.set_xlabel('Time', fontsize=9)
                         ax.set_ylabel(column, fontsize=9)
                         ax.tick_params(axis='both', which='major', labelsize=8)
+                        
+                        # Adjust y-limits to add margin
+                        y_min, y_max = column_data.min(), column_data.max()
+                        y_margin = (y_max - y_min) * 0.1
+                        ax.set_ylim(y_min - y_margin, y_max + y_margin)
+
+                        last_value = column_data.iloc[-1]
+                        ax.text(1.01, 0.5, f'{last_value:.2f}', transform=ax.transAxes, va='center', fontsize=12, color='black')
 
                 # Save the figure to the PDF
                 with PdfPages(pdf_path) as pdf:
@@ -249,12 +350,12 @@ class DataPlotter(QMainWindow):
                     plt.close(fig)
 
     def connect_controller(self):
-        result = subprocess.run(['python3', 'testingui.py'], capture_output=True, text=True)
+        result = subprocess.run(['python', 'testingui.py'], capture_output=True, text=True)
         print(result.stdout)
         print(result.stderr)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = DataPlotter()
-    window.show()
+    window.showMaximized()
     sys.exit(app.exec_())
