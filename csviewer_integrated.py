@@ -11,10 +11,13 @@ import subprocess
 import matplotlib.image as mpimg
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib import image as mpimg
+from datetime import datetime
 
 class DataPlotter(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.upper_bound = None
+        self.lower_bound = None
         self.initUI()
         
     def initUI(self):
@@ -52,69 +55,72 @@ class DataPlotter(QMainWindow):
         
         # Add a spacer to keep logos at the top
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
-        self.left_layout.addItem(spacer)
+        # self.left_layout.addItem(spacer)
         
         # GroupBox for radio buttons
         self.radio_group_box = QGroupBox("Select Mode")
-        self.radio_group_box.setStyleSheet("color: white; font-size: 23px; font-weight: bold;")
+        self.radio_group_box.setStyleSheet(
+            "color: white; font-size: 30px; background-color: #002060;"
+        )
         self.radio_button_layout = QVBoxLayout()
         self.radio_group_box.setLayout(self.radio_button_layout)
         self.left_layout.addWidget(self.radio_group_box)
-        
-        # CSV file selection via radio buttons
+
+        # Set the font size for radio buttons
+        self.radio_group_box.setStyleSheet(
+            "QGroupBox { color: white; font-size: 30px; font-weight: bold; background-color: #002060; }"
+            "QRadioButton { font-size: 18px; color: white; }"
+        )
+
+        # Update CSV list and add radio buttons
         self.csv_group = QButtonGroup(self)
         self.update_csv_list()
         
-        # Add a spacer between radio buttons and Save PDF button
-        self.left_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding))
-
         # GroupBox for checkboxes
         self.checkbox_group_box = QGroupBox("Select Data")
-        self.checkbox_group_box.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
+        self.checkbox_group_box.setStyleSheet(
+            "color: white; font-size: 25px; font-weight: bold; background-color: #002060;"
+        )
         self.checkbox_layout = QFormLayout()
         self.checkbox_group_box.setLayout(self.checkbox_layout)
         self.left_layout.addWidget(self.checkbox_group_box)
-        
+
         # Checkboxes for column selection
         self.checkboxes = {}
 
+        # Set the font size for checkboxes
+        self.checkbox_group_box.setStyleSheet(
+            "QGroupBox { color: white; font-size: 25px; font-weight: bold; background-color: #002060; }"
+            "QCheckBox { font-size: 17px; color: white; }"
+        )
+
         self.checkbox_group_box.setFixedHeight(200)
 
-        # Add a spacer between radio buttons and Save PDF button
+        # GroupBox for explanation
+        self.explanation_group_box = QGroupBox("Plot Line Explanation")
+        self.explanation_group_box.setStyleSheet("background-color: white; color: black; font-size: 20px; font-weight: bold;")
+        self.explanation_layout = QVBoxLayout()
+        self.explanation_group_box.setLayout(self.explanation_layout)
+        self.left_layout.addWidget(self.explanation_group_box)
+
+        explanation_text = (
+            '<p style="color: red;">-- : Upper and Lower<br>'
+            '<p style="color: blue;">Blue : Normal Range<br>'
+            '<p style="color: red;">Red : Above Upper<br>'
+            '<p style="color: orange;">Orange : Below Lower'
+        )
+        explanation_label = QLabel(explanation_text)
+        explanation_label.setStyleSheet("font-size: 13px;")
+        self.explanation_layout.addWidget(explanation_label)
+
+
+        # Add a spacer between explanation and Save PDF button
         self.left_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding))
 
         # Plot area
         self.figure = Figure()
         self.canvas = FigureCanvas(self.figure)
         self.right_layout.addWidget(self.canvas)
-
-        # Add slider for adjusting total data displayed
-        total_slider_layout = QHBoxLayout()
-        total_slider_label = QLabel("Total Data Displayed:")
-        total_slider_label.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
-        total_slider_layout.addWidget(total_slider_label)
-        self.slider_total = QSlider(Qt.Horizontal)
-        self.slider_total.setRange(1, 100)
-        self.slider_total.setValue(100)
-        self.slider_total.setTickPosition(QSlider.TicksBelow)
-        self.slider_total.setTickInterval(10)
-        self.slider_total.valueChanged.connect(self.update_plot)
-        total_slider_layout.addWidget(self.slider_total)
-        self.right_layout.addLayout(total_slider_layout)
-
-        # Add slider for adjusting data range displayed
-        range_slider_layout = QHBoxLayout()
-        range_slider_label = QLabel("Data Range:")
-        range_slider_label.setStyleSheet("color: white; font-size: 16px; font-weight: bold;")
-        range_slider_layout.addWidget(range_slider_label)
-        self.slider_range = QSlider(Qt.Horizontal)
-        self.slider_range.setRange(0, 100)
-        self.slider_range.setValue(0)
-        self.slider_range.setTickPosition(QSlider.TicksBelow)
-        self.slider_range.setTickInterval(10)
-        self.slider_range.valueChanged.connect(self.update_plot)
-        range_slider_layout.addWidget(self.slider_range)
-        self.right_layout.addLayout(range_slider_layout)
         
         # Buttons for saving PDF and connecting controller
         self.save_pdf_button = QPushButton('Save PDF')
@@ -130,12 +136,19 @@ class DataPlotter(QMainWindow):
         self.timer.timeout.connect(self.update_plot)
         self.timer.start(500)
         
+        # Timer for updating CSV list
+        self.csv_update_timer = QTimer()
+        self.csv_update_timer.timeout.connect(self.update_csv_list)
+        self.csv_update_timer.start(2000)
+
         # Data attributes
         self.file_path = ''
         self.mode = ''
         self.data = pd.DataFrame()
         self.gps_lat = None
         self.gps_long = None
+
+        self.update_csv_list()
         
         # Set button styles
         self.set_button_styles()
@@ -156,19 +169,40 @@ class DataPlotter(QMainWindow):
                 logo_label.setAlignment(Qt.AlignCenter)
                 self.logo_layout.addWidget(logo_label)
 
+    def get_latest_csv_files(self):
+        # Retrieve all CSV files in the directory
+        csv_files = [f for f in os.listdir('.') if f.endswith('.csv')]
+        
+        # Dictionary to store the latest files for each keyword
+        latest_files = {'VOR': None, 'ILS': None, 'GP': None}
+        
+        for csv_file in csv_files:
+            if 'VOR' in csv_file:
+                if latest_files['VOR'] is None or os.path.getmtime(csv_file) > os.path.getmtime(latest_files['VOR']):
+                    latest_files['VOR'] = csv_file
+            elif 'ILS' in csv_file:
+                if latest_files['ILS'] is None or os.path.getmtime(csv_file) > os.path.getmtime(latest_files['ILS']):
+                    latest_files['ILS'] = csv_file
+            elif 'GP' in csv_file:
+                if latest_files['GP'] is None or os.path.getmtime(csv_file) > os.path.getmtime(latest_files['GP']):
+                    latest_files['GP'] = csv_file
+        
+        # Filter out None values
+        latest_files = {k: v for k, v in latest_files.items() if v is not None}
+        
+        return latest_files.values()
+    
     def update_csv_list(self):
         # Clear existing radio buttons
-        for button in self.csv_group.buttons():
-            self.csv_group.removeButton(button)
-            button.setParent(None)
-        
-        # Clear existing radio buttons layout
-        for i in range(self.radio_button_layout.count()):
-            widget = self.radio_button_layout.itemAt(i).widget()
-            if widget:
+        while self.radio_button_layout.count():
+            item = self.radio_button_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
                 widget.deleteLater()
-        
-        csv_files = [f for f in os.listdir('.') if f.endswith('.csv')]
+
+        # Get the latest CSV files
+        csv_files = self.get_latest_csv_files()
+
         for csv_file in csv_files:
             radio_button = QRadioButton(csv_file)
             radio_button.clicked.connect(self.select_file)
@@ -245,38 +279,56 @@ class DataPlotter(QMainWindow):
             if not self.data.empty:
                 self.figure.clear()
                 selected_columns = [col for col, checkbox in self.checkboxes.items() if checkbox.isChecked()]
+                num_plots = len(selected_columns)
                 if selected_columns:
-                    # Determine the range of data to be plotted
-                    total_data_points = self.slider_total.value()
-                    data_range_start = self.slider_range.value()
-                    data_range_end = min(data_range_start + total_data_points, len(self.data))
-
                     for i, column in enumerate(selected_columns):
                         if column in self.data.columns:
-                            ax = self.figure.add_subplot(len(selected_columns), 1, i + 1)
-                            
-                            # Slice data according to slider values
-                            column_data = self.data[column].iloc[data_range_start:data_range_end].dropna()
+                            ax = self.figure.add_subplot(num_plots, 1, i + 1)
+                            plot_height = 0.8 / num_plots
+                            plot_bottom = 0.1 + (num_plots - i - 1) * plot_height
+                            ax.set_position([0.1, plot_bottom, 0.8, plot_height])
+
+                            column_data = self.data[column]
+
+                            # Ensure data and boundaries are in range
+                            data_min, data_max = column_data.min(), column_data.max()
+                            upper_bound = self.upper_bound if self.upper_bound is not None else data_max
+                            lower_bound = self.lower_bound if self.lower_bound is not None else data_min
+
+                            # Plot boundaries
+                            ax.axhline(upper_bound, color='red', linestyle='--', linewidth=1, label='Upper Bound')
+                            ax.axhline(lower_bound, color='red', linestyle='--', linewidth=1, label='Lower Bound')
 
                             if column_data.empty:
                                 continue
 
-                            ax.plot(column_data.index, column_data, label=column)
+                            # Define the colors
+                            color_normal = 'blue'
+                            color_above = 'red'
+                            color_below = 'orange'
+
+                            # Plot data
+                            above_bound = column_data > upper_bound
+                            below_bound = column_data < lower_bound
+
+                            ax.plot(column_data.index[~above_bound & ~below_bound], column_data[~above_bound & ~below_bound], color=color_normal, label=column)
+                            ax.plot(column_data.index[above_bound], column_data[above_bound], color=color_above, label=f'{column} (Above Bound)')
+                            ax.plot(column_data.index[below_bound], column_data[below_bound], color=color_below, label=f'{column} (Below Bound)')
+
                             ax.grid(True)
-                            ax.legend()
                             ax.set_xlabel('Time', fontsize=9)
                             ax.set_ylabel(column, fontsize=9)
                             ax.tick_params(axis='both', which='major', labelsize=8)
 
+                            # Adjust y-limits to add margin
                             y_min, y_max = column_data.min(), column_data.max()
-                            y_margin = (y_max - y_min) * 2.5
-                            ax.set_ylim(y_min - y_margin, y_max + y_margin)
+                            y_margin = (y_max - y_min) * 1.0  # Margin for visibility
+                            ax.set_ylim(min(y_min, lower_bound) - y_margin, max(y_max, upper_bound) + y_margin)
 
                             last_value = column_data.iloc[-1]
                             ax.text(1.01, 0.5, f'{last_value:.2f}', transform=ax.transAxes, va='center', fontsize=12, color='black')
 
                     self.canvas.draw()
-
 
     def clear_plot(self):
         self.figure.clear()
@@ -286,65 +338,87 @@ class DataPlotter(QMainWindow):
         if self.file_path and not self.data.empty:
             pdf_path, _ = QFileDialog.getSaveFileName(self, "Save PDF File", "", "PDF Files (*.pdf);;All Files (*)")
             if pdf_path:
-                # Ukuran A4 dalam inci
-                a4_width, a4_height = 8.27, 11.69  # Lebar dan tinggi dalam inci
+                a4_width, a4_height = 8.27, 11.69  # A4 dimensions in inches
                 
-                # Determine the number of selected columns
                 selected_columns = [col for col, checkbox in self.checkboxes.items() if checkbox.isChecked()]
                 num_plots = len(selected_columns)
                 
-                # Ukuran figur tetap ke ukuran A4
                 fig = plt.figure(figsize=(a4_width, a4_height))
-                fig.subplots_adjust(top=0.85, bottom=0.1, left=0.1, right=0.9, hspace=0.4)  # Adjust margins and spacing
+                fig.subplots_adjust(top=0.85, bottom=0.1, left=0.1, right=0.9, hspace=0.4)
 
-                # Add the logo at the top
-                logo_ax = fig.add_axes([0.1, 0.9, 0.8, 0.07])  # [left, bottom, width, height] in figure fraction
+                logo_ax = fig.add_axes([0.1, 0.9, 0.8, 0.07])
                 logo_ax.axis('off')
                 image_path = 'rsxbeta.png'
                 if os.path.exists(image_path):
                     img = mpimg.imread(image_path)
                     logo_ax.imshow(img, aspect='auto')
 
-                # Add header information
-                header_ax = fig.add_axes([0.1, 0.80, 0.8, 0.05])  # Adjust position and size as needed
+                header_ax = fig.add_axes([0.1, 0.80, 0.8, 0.1])
                 header_ax.axis('off')
                 gps_info = f'GPS: Lat {self.gps_lat}, Long {self.gps_long}' if self.gps_lat and self.gps_long else ''
                 header_ax.text(0.5, 0.5,
-                            f'MODE: {self.mode}\n\n'
-                            f'DATE: {pd.Timestamp.now().strftime("%Y-%m-%d")}\n\n'
-                            f'TIME: {pd.Timestamp.now().strftime("%H:%M:%S")}\n\n'
+                            f'MODE: {self.mode}\n'
+                            f'DATE: {pd.Timestamp.now().strftime("%Y-%m-%d")}\n'
+                            f'TIME: {pd.Timestamp.now().strftime("%H:%M:%S")}\n'
                             f'{gps_info}',
                             fontsize=12,
                             ha='center',
                             va='center')
 
-                # Add plots
-                plot_height = 0.1  # Set a fixed plot height
-                plot_spacing = 0.1  # Fixed spacing between plots
-                start_height = 0.6  # Starting height for the first plot
+                plot_height = 0.4 if num_plots == 1 else 0.2 if num_plots == 2 else 0.15 if num_plots == 3 else 0.1
+                plot_spacing = 0.04
+                start_height = 0.60 if num_plots == 3 else 0.55 if num_plots == 2 else 0.30 if num_plots == 1 else 0.70
 
                 for i, column in enumerate(selected_columns):
                     if column in self.data.columns:
-                        # Calculate the position of each plot
-                        plot_bottom = start_height - (i * (plot_height //+ plot_spacing))
-                        ax = fig.add_axes([0.1, plot_bottom, 0.8, plot_height])  # Fixed position for each plot
+                        plot_bottom = start_height - (i * (plot_height + plot_spacing))
+                        ax = fig.add_axes([0.1, plot_bottom, 0.8, plot_height])
                         column_data = self.data[column].dropna()
-                        ax.plot(self.data.index, column_data, label=column)
-                        ax.grid(True)
-                        ax.legend()
-                        ax.set_xlabel('Time', fontsize=9)
-                        ax.set_ylabel(column, fontsize=9)
-                        ax.tick_params(axis='both', which='major', labelsize=8)
                         
+                        # Ensure data and boundaries are in range
+                        data_min, data_max = column_data.min(), column_data.max()
+                        upper_bound = self.upper_bound if self.upper_bound is not None else data_max
+                        lower_bound = self.lower_bound if self.lower_bound is not None else data_min
+
+                        # Plot boundaries
+                        ax.axhline(upper_bound, color='red', linestyle='--', linewidth=1, label='Upper Bound')
+                        ax.axhline(lower_bound, color='red', linestyle='--', linewidth=1, label='Lower Bound')
+
+                        if column_data.empty:
+                            continue
+
+                        # Define the colors
+                        color_normal = 'blue'
+                        color_above = 'red'
+                        color_below = 'orange'
+
+                        # Plot data
+                        above_bound = column_data > upper_bound
+                        below_bound = column_data < lower_bound
+
+                        ax.plot(column_data.index[~above_bound & ~below_bound], column_data[~above_bound & ~below_bound], color=color_normal, label=column)
+                        ax.plot(column_data.index[above_bound], column_data[above_bound], color=color_above, label=f'{column} (Above Bound)')
+                        ax.plot(column_data.index[below_bound], column_data[below_bound], color=color_below, label=f'{column} (Below Bound)')
+
+                        ax.grid(True)
+                        ax.set_xlabel('Time', fontsize=9)
+                        ax.set_ylabel(column, fontsize=7)
+                        ax.tick_params(axis='both', which='major', labelsize=8)
+
                         # Adjust y-limits to add margin
                         y_min, y_max = column_data.min(), column_data.max()
-                        y_margin = (y_max - y_min) * 0.1
-                        ax.set_ylim(y_min - y_margin, y_max + y_margin)
+                        y_margin = (y_max - y_min) * 0.6
+                        ax.set_ylim(min(y_min, lower_bound) - y_margin, max(y_max, upper_bound) + y_margin)
 
                         last_value = column_data.iloc[-1]
-                        ax.text(1.01, 0.5, f'{last_value:.2f}', transform=ax.transAxes, va='center', fontsize=12, color='black')
+                        ax.text(1.01, 0.5, f'{last_value:.2f}', transform=ax.transAxes, va='center', fontsize=10, color='black')
 
-                # Save the figure to the PDF
+                # Add a color legend in the bottom right corner of the page with color-specific text
+                fig.text(0.95, 0.08, "-- : Upper and Lower", fontsize=10, ha='right', va='bottom', color='red')
+                fig.text(0.95, 0.06, "Blue : Normal Range", fontsize=10, ha='right', va='bottom', color='blue')
+                fig.text(0.95, 0.04, "Red : Above Upper", fontsize=10, ha='right', va='bottom', color='red')
+                fig.text(0.95, 0.02, "Orange : Below Lower", fontsize=10, ha='right', va='bottom', color='orange')
+
                 with PdfPages(pdf_path) as pdf:
                     pdf.savefig(fig)
                     plt.close(fig)
