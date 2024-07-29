@@ -16,7 +16,7 @@ class DataPlotter(QMainWindow):
         self.lower_bound = None
         self.mode = ''
         self.initUI()
-        self.initFileWatcher()  # Initialize file system watcher
+        self.initFileWatcher()
 
     def initUI(self):
         self.setWindowTitle('Data Plotter')
@@ -48,9 +48,18 @@ class DataPlotter(QMainWindow):
         self.addLogos()
         
         self.mode_label = QLabel(f"MODE : {self.mode}")
-        self.mode_label.setAlignment(Qt.AlignCenter)
-        self.mode_label.setStyleSheet("font-size: 16px; font-weight: bold; color: white;")
+        self.mode_label.setStyleSheet("font-size: 30px; font-weight: bold; color: white;")
         self.left_layout.addWidget(self.mode_label)
+
+        spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
+        
+        self.file1_label = QLabel("File 1: None")
+        self.file1_label.setStyleSheet("font-size: 14px; color: white;")
+        self.left_layout.addWidget(self.file1_label)
+        
+        self.file2_label = QLabel("File 2: None")
+        self.file2_label.setStyleSheet("font-size: 14px; color: white;")
+        self.left_layout.addWidget(self.file2_label)
 
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
         
@@ -60,7 +69,7 @@ class DataPlotter(QMainWindow):
 
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
 
-        self.select_file_button = QPushButton('Select CSV')
+        self.select_file_button = QPushButton('Select File')
         self.select_file_button.clicked.connect(self.select_csv_file)
         self.left_layout.addWidget(self.select_file_button)
 
@@ -75,20 +84,29 @@ class DataPlotter(QMainWindow):
 
         self.add_data_selection_checkboxes()
 
-        self.explanation_group_box = QGroupBox("Plot Line Explanation")
+        self.compare_file_button = QPushButton('Compare')  # New button for comparing CSV files
+        self.compare_file_button.clicked.connect(self.select_compare_csv_file)
+        self.left_layout.addWidget(self.compare_file_button)
+
+        self.remove_compare_button = QPushButton('Remove Compared')  # New button to remove comparison file
+        self.remove_compare_button.clicked.connect(self.remove_compare_csv_file)
+        self.left_layout.addWidget(self.remove_compare_button)
+
+        self.explanation_group_box = QGroupBox("LEGENDS")
         self.explanation_group_box.setStyleSheet("background-color: white; color: black; font-size: 20px; font-weight: bold;")
         self.explanation_layout = QVBoxLayout()
         self.explanation_group_box.setLayout(self.explanation_layout)
         self.left_layout.addWidget(self.explanation_group_box)
 
         explanation_text = (
-            '<p style="color: red;">-- : Upper and Lower<br>'
-            '<p style="color: blue;">Blue : Normal Range<br>'
-            '<p style="color: red;">Red : Above Upper<br>'
+            '<p style="color: red;">-- : Upper and Lower'
+            '<p style="color: blue;">BLUE : File 1'
+            '<p style="color: green;">GREEN : File 2'
+            '<p style="color: red;">Red : Above Upper'
             '<p style="color: orange;">Orange : Below Lower'
         )
         explanation_label = QLabel(explanation_text)
-        explanation_label.setStyleSheet("font-size: 13px;")
+        explanation_label.setStyleSheet("font-size: 18px;")
         self.explanation_layout.addWidget(explanation_label)
 
         self.left_layout.addSpacerItem(QSpacerItem(20, 20, QSizePolicy.Minimum, QSizePolicy.Expanding))
@@ -106,6 +124,7 @@ class DataPlotter(QMainWindow):
         self.timer.start(900)
 
         self.file_path = ''
+        self.second_file_path = ''
         self.data = pd.DataFrame()
         self.gps_lat = None
         self.gps_long = None
@@ -117,9 +136,11 @@ class DataPlotter(QMainWindow):
         self.save_pdf_button.setStyleSheet(button_style)
         self.connect_controller_button.setStyleSheet(button_style)
         self.select_file_button.setStyleSheet(button_style)
+        self.compare_file_button.setStyleSheet(button_style)
+        self.remove_compare_button.setStyleSheet(button_style)
 
     def addLogos(self):
-        image_paths = ["beta_no_icc.png", "rs_no_icc.png"]
+        image_paths = ["rs_no_icc.png", "beta_no_icc.png"]
         for image_path in image_paths:
             if os.path.exists(image_path):
                 pixmap = QPixmap(image_path)
@@ -136,6 +157,7 @@ class DataPlotter(QMainWindow):
                 self.file_path = max(latest_files, key=os.path.getmtime)
                 detect_mode(self)
                 self.update_checkboxes_based_on_mode()
+                self.file1_label.setText(f"File 1: {os.path.basename(self.file_path)}")
         except Exception as e:
             print(f"Error in select_last_csv_file: {e}")
 
@@ -148,9 +170,10 @@ class DataPlotter(QMainWindow):
                 detect_mode(self)
                 self.update_checkboxes_based_on_mode()
                 self.update_plot()
-                self.update_mode_label()  # Update the mode label when a new file is selected
+                self.update_mode_label()
+                self.file1_label.setText(f"File 1: {os.path.basename(self.file_path)}")
         except Exception as e:
-         print(f"Error in select_csv_file: {e}")
+            print(f"Error in select_csv_file: {e}")
 
     def update_mode_label(self):
         self.mode_label.setText(f"MODE : {self.mode}")
@@ -174,6 +197,25 @@ class DataPlotter(QMainWindow):
     def get_selected_columns(self):
         selected_columns = [column for column, checkbox in self.data_checkboxes.items() if checkbox.isChecked()]
         return selected_columns
+    
+    def select_compare_csv_file(self):
+        try:
+            options = QFileDialog.Options()
+            file_path, _ = QFileDialog.getOpenFileName(self, "Select CSV File to Compare", "", "CSV Files (*.csv);;All Files (*)", options=options)
+            if file_path:
+                self.second_file_path = file_path
+                self.update_plot()
+                self.file2_label.setText(f"File 2: {os.path.basename(self.second_file_path)}")
+        except Exception as e:
+            print(f"Error in select_compare_csv_file: {e}")
+
+    def remove_compare_csv_file(self):
+        try:
+            self.second_file_path = ''
+            self.update_plot()
+            self.file2_label.setText("File 2: None")
+        except Exception as e:
+            print(f"Error in remove_compare_csv_file: {e}")
 
     def update_plot(self):
         update_plot(self)

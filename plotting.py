@@ -2,9 +2,11 @@ import pandas as pd
 import os
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
-from PyQt5.QtWidgets import  QFileDialog
+from PyQt5.QtWidgets import QFileDialog
 import matplotlib.image as mpimg
+from matplotlib.collections import LineCollection
 from utils import get_user_inputs
+
 def update_plot(window):
     try:
         if window.file_path:
@@ -16,12 +18,23 @@ def update_plot(window):
                 except UnicodeDecodeError:
                     continue
 
+            if window.second_file_path:
+                for encoding in encodings_to_try:
+                    try:
+                        window.second_data = pd.read_csv(window.second_file_path, encoding=encoding, on_bad_lines='skip')
+                        break
+                    except UnicodeDecodeError:
+                        continue
+            else:
+                window.second_data = None
+
             if not window.data.empty:
                 window.figure.clear()
                 columns = get_columns_based_on_mode(window)
                 selected_columns = window.get_selected_columns()
                 columns = [col for col in columns if col in selected_columns]
                 num_plots = len(columns)
+
                 if columns:
                     for i, column in enumerate(columns):
                         if column in window.data.columns:
@@ -30,7 +43,6 @@ def update_plot(window):
                             plot_bottom = 0.05 + (num_plots - i - 1) * plot_height
                             ax.set_position([0.1, plot_bottom, 0.8, plot_height])
 
-                            # Convert column data to numeric and handle non-numeric values
                             column_data = pd.to_numeric(window.data[column], errors='coerce').dropna()
 
                             if column_data.empty:
@@ -51,18 +63,49 @@ def update_plot(window):
                             x_values = column_data.index
                             y_values = column_data
 
-                            # Ensure x_values and y_values are lists or arrays
-                            if isinstance(x_values, pd.Index):
-                                x_values = x_values.tolist()
-                            
-                            if isinstance(y_values, pd.Series):
-                                y_values = y_values.tolist()
+                            segments = []
+                            colors = []
+                            for j in range(len(y_values) - 1):
+                                x0, x1 = x_values[j], x_values[j + 1]
+                                y0, y1 = y_values.iloc[j], y_values.iloc[j + 1]
 
-                            ax.plot(x_values, y_values, color=color_normal)
-                            ax.plot([x for x, y in zip(x_values, y_values) if y > upper_bound], 
-                                    [y for y in y_values if y > upper_bound], color=color_above)
-                            ax.plot([x for x, y in zip(x_values, y_values) if y < lower_bound], 
-                                    [y for y in y_values if y < lower_bound], color=color_below)
+                                segment = [(x0, y0), (x1, y1)]
+                                if len(segment) == 2 and all(len(point) == 2 for point in segment):
+                                    segments.append(segment)
+                                    if y0 > upper_bound or y1 > upper_bound:
+                                        colors.append(color_above)
+                                    elif y0 < lower_bound or y1 < lower_bound:
+                                        colors.append(color_below)
+                                    else:
+                                        colors.append(color_normal)
+                                else:
+                                    print(f"Invalid segment: {segment}")  # Debugging statement
+
+                            lc = LineCollection(segments, colors=colors, linewidths=2)
+                            ax.add_collection(lc)
+                            ax.autoscale()
+
+                            if window.second_data is not None and column in window.second_data.columns:
+                                second_column_data = pd.to_numeric(window.second_data[column], errors='coerce').dropna()
+                                x_values_2 = second_column_data.index
+                                y_values_2 = second_column_data
+
+                                segments_2 = []
+                                colors_2 = []
+                                for j in range(len(y_values_2) - 1):
+                                    x0, x1 = x_values_2[j], x_values_2[j + 1]
+                                    y0, y1 = y_values_2.iloc[j], y_values_2.iloc[j + 1]
+
+                                    segment_2 = [(x0, y0), (x1, y1)]
+                                    if len(segment_2) == 2 and all(len(point) == 2 for point in segment_2):
+                                        segments_2.append(segment_2)
+                                        colors_2.append('green')
+                                    else:
+                                        print(f"Invalid segment_2: {segment_2}")  # Debugging statement
+
+                                lc_2 = LineCollection(segments_2, colors=colors_2, linewidths=2)
+                                ax.add_collection(lc_2)
+                                ax.autoscale()
 
                             ax.grid(True)
                             ax.set_xlabel('Time', fontsize=9)
@@ -107,7 +150,7 @@ def save_plot(self):
             
             bandara, alat, pengujian = user_inputs
 
-            columns = columns = get_columns_based_on_mode(self)
+            columns = get_columns_based_on_mode(self)
             num_plots = len(columns)
 
             with PdfPages(pdf_path) as pdf:
@@ -170,9 +213,22 @@ def save_plot(self):
                             color_above = 'red'
                             color_below = 'orange'
 
-                            ax.plot(column_data.index, column_data, color=color_normal)
-                            ax.plot(column_data.index[column_data > upper_bound], column_data[column_data > upper_bound], color=color_above)
-                            ax.plot(column_data.index[column_data < lower_bound], column_data[column_data < lower_bound], color=color_below)
+                            segments = []
+                            colors = []
+                            for j in range(len(column_data) - 1):
+                                x0, x1 = column_data.index[j], column_data.index[j + 1]
+                                y0, y1 = column_data[j], column_data[j + 1]
+                                segments.append([(x0, y0), (x1, y1)])
+                                if y0 > upper_bound or y1 > upper_bound:
+                                    colors.append(color_above)
+                                elif y0 < lower_bound or y1 < lower_bound:
+                                    colors.append(color_below)
+                                else:
+                                    colors.append(color_normal)
+
+                            lc = LineCollection(segments, colors=colors, linewidths=2)
+                            ax.add_collection(lc)
+                            ax.autoscale()
 
                             ax.grid(True)
                             ax.set_xlabel('Time', fontsize=9)
@@ -190,4 +246,3 @@ def save_plot(self):
 
                     pdf.savefig(fig)
                     plt.close(fig)
-
