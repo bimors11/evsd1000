@@ -1,25 +1,30 @@
 import os
 import pandas as pd
-from PyQt5.QtWidgets import (QMainWindow, QFileDialog, QCheckBox, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QGroupBox, QLabel, QSpacerItem, QSizePolicy)
+from PyQt5.QtWidgets import (QMainWindow, QFileDialog, QCheckBox, QVBoxLayout, QHBoxLayout, QWidget, QPushButton, QGroupBox, QLabel, QSpacerItem, QSizePolicy, QSlider)
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, QTimer, QFileSystemWatcher
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 import subprocess
 from plotting import update_plot, save_plot, get_columns_based_on_mode
-from utils import get_latest_csv_files, detect_mode, get_user_inputs
+from utils import get_latest_csv_files, detect_mode, get_bounds_inputs
 
 class DataPlotter(QMainWindow):
     def __init__(self):
         super().__init__()
         self.upper_bound = None
         self.lower_bound = None
+        self.bounds = {}
         self.mode = ''
         self.initUI()
         self.initFileWatcher()
+        self.existing_csv_files = set(self.get_existing_csv_files())
+
+    def get_existing_csv_files(self):
+        return [f for f in os.listdir('.') if f.endswith('.csv')]
 
     def initUI(self):
-        self.setWindowTitle('Data Plotter')
+        self.setWindowTitle('RS X BETA Data Viewer')
         self.setGeometry(100, 100, 1000, 600)
         self.setStyleSheet("background-color: #002060;")
         
@@ -63,7 +68,7 @@ class DataPlotter(QMainWindow):
 
         spacer = QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding)
         
-        self.connect_controller_button = QPushButton('Connect Controller')
+        self.connect_controller_button = QPushButton('Connect to Controller')
         self.connect_controller_button.clicked.connect(self.connect_controller)
         self.left_layout.addWidget(self.connect_controller_button)
 
@@ -84,11 +89,11 @@ class DataPlotter(QMainWindow):
 
         self.add_data_selection_checkboxes()
 
-        self.compare_file_button = QPushButton('Compare')  # New button for comparing CSV files
+        self.compare_file_button = QPushButton('Compare File')
         self.compare_file_button.clicked.connect(self.select_compare_csv_file)
         self.left_layout.addWidget(self.compare_file_button)
 
-        self.remove_compare_button = QPushButton('Remove Compared')  # New button to remove comparison file
+        self.remove_compare_button = QPushButton('Remove Compared File')  
         self.remove_compare_button.clicked.connect(self.remove_compare_csv_file)
         self.left_layout.addWidget(self.remove_compare_button)
 
@@ -114,6 +119,40 @@ class DataPlotter(QMainWindow):
         self.figure = Figure()
         self.canvas = FigureCanvas(self.figure)
         self.right_layout.addWidget(self.canvas)
+
+        data_limit_layout = QHBoxLayout()
+        data_limit_label = QLabel('Data Limit:')
+        data_limit_label.setStyleSheet("color: white;")
+        data_limit_layout.addWidget(data_limit_label)
+        
+        self.data_limit_slider = QSlider(Qt.Horizontal)
+        self.data_limit_slider.setMinimum(1)
+        self.data_limit_slider.setMaximum(100)
+        self.data_limit_slider.setValue(100)
+        self.data_limit_slider.setTickPosition(QSlider.TicksBelow)
+        self.data_limit_slider.setTickInterval(10)
+        self.data_limit_slider.setSingleStep(1)
+        self.data_limit_slider.valueChanged.connect(self.update_plot)
+        data_limit_layout.addWidget(self.data_limit_slider)
+        
+        self.right_layout.addLayout(data_limit_layout)
+        
+        data_range_layout = QHBoxLayout()
+        data_range_label = QLabel('Data Range:')
+        data_range_label.setStyleSheet("color: white;")
+        data_range_layout.addWidget(data_range_label)
+        
+        self.data_range_slider = QSlider(Qt.Horizontal)
+        self.data_range_slider.setMinimum(0)
+        self.data_range_slider.setMaximum(100)
+        self.data_range_slider.setValue(100)
+        self.data_range_slider.setTickPosition(QSlider.TicksBelow)
+        self.data_range_slider.setTickInterval(10)
+        self.data_range_slider.setSingleStep(1)
+        self.data_range_slider.valueChanged.connect(self.update_plot)
+        data_range_layout.addWidget(self.data_range_slider)
+        
+        self.right_layout.addLayout(data_range_layout)
         
         self.save_pdf_button = QPushButton('Save PDF')
         self.save_pdf_button.clicked.connect(self.save_plot)
@@ -121,7 +160,7 @@ class DataPlotter(QMainWindow):
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_plot)
-        self.timer.start(900)
+        self.timer.start(500)
 
         self.file_path = ''
         self.second_file_path = ''
@@ -178,6 +217,15 @@ class DataPlotter(QMainWindow):
     def update_mode_label(self):
         self.mode_label.setText(f"MODE : {self.mode}")
 
+    def prompt_for_bounds(self):
+        columns = get_columns_based_on_mode(self)
+        bounds = get_bounds_inputs(self.mode, columns)
+        if bounds:
+            self.bounds = bounds
+            self.update_plot()
+        else:
+            print("Bounds input was not valid or was canceled.")
+
     def add_data_selection_checkboxes(self):
         self.data_checkboxes = {}
         self.update_checkboxes_based_on_mode()
@@ -229,7 +277,7 @@ class DataPlotter(QMainWindow):
 
     def connect_controller(self):
         try:
-            subprocess.Popen(['python', 'testingui.py'])
+            subprocess.Popen(['python', 'controller.py'])
         except Exception as e:
             print(f"Error connecting to controller: {e}")
 
@@ -238,4 +286,8 @@ class DataPlotter(QMainWindow):
         self.file_watcher.directoryChanged.connect(self.on_directory_changed)
 
     def on_directory_changed(self, path):
-        self.select_last_csv_file()
+        current_csv_files = set(self.get_existing_csv_files())
+        new_files = current_csv_files - self.existing_csv_files
+        if new_files:
+            self.existing_csv_files = current_csv_files
+            self.select_last_csv_file()
