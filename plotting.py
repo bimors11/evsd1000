@@ -60,7 +60,7 @@ def update_plot(window):
                         if column_data.empty:
                             continue
 
-                        # Use user-defined bounds if set
+                        # Gunakan batas yang didefinisikan oleh pengguna jika ada
                         if column in window.bounds:
                             upper_bound = window.bounds[column][0]
                             lower_bound = window.bounds[column][1]
@@ -80,19 +80,45 @@ def update_plot(window):
 
                         segments = []
                         colors = []
+
                         for j in range(len(y_values) - 1):
                             x0, x1 = x_values[j], x_values[j + 1]
                             y0, y1 = y_values.iloc[j], y_values.iloc[j + 1]
 
-                            if y0 > upper_bound or y1 > upper_bound:
-                                color = color_above
-                            elif y0 < lower_bound or y1 < lower_bound:
-                                color = color_below
+                            if y0 > upper_bound and y1 > upper_bound:
+                                segments.append([(x0, y0), (x1, y1)])
+                                colors.append(color_above)
+                            elif y0 < lower_bound and y1 < lower_bound:
+                                segments.append([(x0, y0), (x1, y1)])
+                                colors.append(color_below)
                             else:
-                                color = color_normal
-
-                            segments.append([(x0, y0), (x1, y1)])
-                            colors.append(color)
+                                if y0 > upper_bound:
+                                    x_cross = x0 + (x1 - x0) * (upper_bound - y0) / (y1 - y0)
+                                    segments.append([(x0, y0), (x_cross, upper_bound)])
+                                    colors.append(color_above)
+                                    segments.append([(x_cross, upper_bound), (x1, y1)])
+                                    colors.append(color_normal if y1 < upper_bound else color_below)
+                                elif y1 > upper_bound:
+                                    x_cross = x0 + (x1 - x0) * (upper_bound - y0) / (y1 - y0)
+                                    segments.append([(x0, y0), (x_cross, upper_bound)])
+                                    colors.append(color_normal)
+                                    segments.append([(x_cross, upper_bound), (x1, y1)])
+                                    colors.append(color_above)
+                                elif y0 < lower_bound:
+                                    x_cross = x0 + (x1 - x0) * (lower_bound - y0) / (y1 - y0)
+                                    segments.append([(x0, y0), (x_cross, lower_bound)])
+                                    colors.append(color_below)
+                                    segments.append([(x_cross, lower_bound), (x1, y1)])
+                                    colors.append(color_normal if y1 > lower_bound else color_above)
+                                elif y1 < lower_bound:
+                                    x_cross = x0 + (x1 - x0) * (lower_bound - y0) / (y1 - y0)
+                                    segments.append([(x0, y0), (x_cross, lower_bound)])
+                                    colors.append(color_normal)
+                                    segments.append([(x_cross, lower_bound), (x1, y1)])
+                                    colors.append(color_below)
+                                else:
+                                    segments.append([(x0, y0), (x1, y1)])
+                                    colors.append(color_normal)
 
                         lc = LineCollection(segments, colors=colors, linewidths=2)
                         ax.add_collection(lc)
@@ -118,7 +144,7 @@ def update_plot(window):
                         ax.tick_params(axis='both', which='major', labelsize=8)
 
                         y_min, y_max = column_data.min(), column_data.max()
-                        y_margin = 4.0
+                        y_margin = 20
                         ax.set_ylim(min(y_min, lower_bound) - y_margin, max(y_max, upper_bound) + y_margin)
 
                         last_value = column_data.iloc[-1]
@@ -206,6 +232,7 @@ def save_plot(self):
                             if column_data.empty:
                                 continue
 
+                            # Gunakan batas yang didefinisikan oleh pengguna jika ada
                             if column in self.bounds:
                                 upper_bound = self.bounds[column][0]
                                 lower_bound = self.bounds[column][1]
@@ -216,25 +243,54 @@ def save_plot(self):
                             ax.axhline(upper_bound, color='black', linestyle='--', linewidth=1, label='Upper Bound')
                             ax.axhline(lower_bound, color='black', linestyle='--', linewidth=1, label='Lower Bound')
 
-                            if column_data.empty:
-                                continue
-
                             color_normal = 'blue'
                             color_above = 'red'
                             color_below = 'orange'
 
+                            x_values = column_data.index
+                            y_values = column_data
+
                             segments = []
                             colors = []
-                            for j in range(len(column_data) - 1):
-                                x0, x1 = column_data.index[j], column_data.index[j + 1]
-                                y0, y1 = column_data[j], column_data[j + 1]
-                                segments.append([(x0, y0), (x1, y1)])
-                                if y0 > upper_bound or y1 > upper_bound:
+
+                            for j in range(len(y_values) - 1):
+                                x0, x1 = x_values[j], x_values[j + 1]
+                                y0, y1 = y_values.iloc[j], y_values.iloc[j + 1]
+
+                                if y0 > upper_bound and y1 > upper_bound:
+                                    segments.append([(x0, y0), (x1, y1)])
                                     colors.append(color_above)
-                                elif y0 < lower_bound or y1 < lower_bound:
+                                elif y0 < lower_bound and y1 < lower_bound:
+                                    segments.append([(x0, y0), (x1, y1)])
                                     colors.append(color_below)
                                 else:
-                                    colors.append(color_normal)
+                                    if y0 > upper_bound:
+                                        x_cross = x0 + (x1 - x0) * (upper_bound - y0) / (y1 - y0)
+                                        segments.append([(x0, y0), (x_cross, upper_bound)])
+                                        colors.append(color_above)
+                                        segments.append([(x_cross, upper_bound), (x1, y1)])
+                                        colors.append(color_normal if y1 < upper_bound else color_below)
+                                    elif y1 > upper_bound:
+                                        x_cross = x0 + (x1 - x0) * (upper_bound - y0) / (y1 - y0)
+                                        segments.append([(x0, y0), (x_cross, upper_bound)])
+                                        colors.append(color_normal)
+                                        segments.append([(x_cross, upper_bound), (x1, y1)])
+                                        colors.append(color_above)
+                                    elif y0 < lower_bound:
+                                        x_cross = x0 + (x1 - x0) * (lower_bound - y0) / (y1 - y0)
+                                        segments.append([(x0, y0), (x_cross, lower_bound)])
+                                        colors.append(color_below)
+                                        segments.append([(x_cross, lower_bound), (x1, y1)])
+                                        colors.append(color_normal if y1 > lower_bound else color_above)
+                                    elif y1 < lower_bound:
+                                        x_cross = x0 + (x1 - x0) * (lower_bound - y0) / (y1 - y0)
+                                        segments.append([(x0, y0), (x_cross, lower_bound)])
+                                        colors.append(color_normal)
+                                        segments.append([(x_cross, lower_bound), (x1, y1)])
+                                        colors.append(color_below)
+                                    else:
+                                        segments.append([(x0, y0), (x1, y1)])
+                                        colors.append(color_normal)
 
                             lc = LineCollection(segments, colors=colors, linewidths=2)
                             ax.add_collection(lc)
