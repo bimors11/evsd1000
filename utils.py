@@ -46,11 +46,11 @@ def get_bounds_inputs(mode, columns):
     dialog = QDialog()
     dialog.setWindowTitle(f'Enter Bounds for {mode}')
     dialog.setStyleSheet("background-color: white; color: black;")
-    dialog.setFixedSize(400, 300)
+    dialog.setFixedSize(550, 450)
 
     main_layout = QVBoxLayout()
     form_layout = QFormLayout()
-    form_layout.setSpacing(10)
+    form_layout.setSpacing(20)
 
     bound_inputs = {}
 
@@ -65,10 +65,8 @@ def get_bounds_inputs(mode, columns):
 
     button_layout = QHBoxLayout()
     ok_button = QPushButton('OK')
-    cancel_button = QPushButton('Cancel')
 
     button_layout.addWidget(ok_button)
-    button_layout.addWidget(cancel_button)
     main_layout.addLayout(button_layout)
     dialog.setLayout(main_layout)
 
@@ -86,7 +84,6 @@ def get_bounds_inputs(mode, columns):
             pass
 
     ok_button.clicked.connect(on_ok_clicked)
-    cancel_button.clicked.connect(dialog.reject)
 
     result = dialog.exec()
 
