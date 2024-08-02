@@ -96,20 +96,44 @@ def update_plot(window):
                                     x_cross = x0 + (x1 - x0) * (upper_bound - y0) / (y1 - y0)
                                     segments.append([(x0, y0), (x_cross, upper_bound)])
                                     colors.append(color_above)
-                                    segments.append([(x_cross, upper_bound), (x1, y1)])
-                                    colors.append(color_normal if y1 < upper_bound else color_below)
+                                    if y1 < lower_bound:
+                                        x_cross_lower = x_cross + (x1 - x_cross) * (lower_bound - upper_bound) / (y1 - upper_bound)
+                                        segments.append([(x_cross, upper_bound), (x_cross_lower, lower_bound)])
+                                        colors.append(color_normal)
+                                        segments.append([(x_cross_lower, lower_bound), (x1, y1)])
+                                        colors.append(color_below)
+                                    else:
+                                        segments.append([(x_cross, upper_bound), (x1, y1)])
+                                        colors.append(color_normal)
                                 elif y1 > upper_bound:
-                                    x_cross = x0 + (x1 - x0) * (upper_bound - y0) / (y1 - y0)
-                                    segments.append([(x0, y0), (x_cross, upper_bound)])
-                                    colors.append(color_normal)
-                                    segments.append([(x_cross, upper_bound), (x1, y1)])
-                                    colors.append(color_above)
+                                    if y0 < lower_bound:
+                                        x_cross_lower = x0 + (x1 - x0) * (lower_bound - y0) / (y1 - y0)
+                                        segments.append([(x0, y0), (x_cross_lower, lower_bound)])
+                                        colors.append(color_below)
+                                        x_cross = x_cross_lower + (x1 - x_cross_lower) * (upper_bound - lower_bound) / (y1 - lower_bound)
+                                        segments.append([(x_cross_lower, lower_bound), (x_cross, upper_bound)])
+                                        colors.append(color_normal)
+                                        segments.append([(x_cross, upper_bound), (x1, y1)])
+                                        colors.append(color_above)
+                                    else:
+                                        x_cross = x0 + (x1 - x0) * (upper_bound - y0) / (y1 - y0)
+                                        segments.append([(x0, y0), (x_cross, upper_bound)])
+                                        colors.append(color_normal)
+                                        segments.append([(x_cross, upper_bound), (x1, y1)])
+                                        colors.append(color_above)
                                 elif y0 < lower_bound:
                                     x_cross = x0 + (x1 - x0) * (lower_bound - y0) / (y1 - y0)
                                     segments.append([(x0, y0), (x_cross, lower_bound)])
                                     colors.append(color_below)
-                                    segments.append([(x_cross, lower_bound), (x1, y1)])
-                                    colors.append(color_normal if y1 > lower_bound else color_above)
+                                    if y1 > upper_bound:
+                                        x_cross_upper = x_cross + (x1 - x_cross) * (upper_bound - lower_bound) / (y1 - lower_bound)
+                                        segments.append([(x_cross, lower_bound), (x_cross_upper, upper_bound)])
+                                        colors.append(color_normal)
+                                        segments.append([(x_cross_upper, upper_bound), (x1, y1)])
+                                        colors.append(color_above)
+                                    else:
+                                        segments.append([(x_cross, lower_bound), (x1, y1)])
+                                        colors.append(color_normal)
                                 elif y1 < lower_bound:
                                     x_cross = x0 + (x1 - x0) * (lower_bound - y0) / (y1 - y0)
                                     segments.append([(x0, y0), (x_cross, lower_bound)])
