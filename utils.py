@@ -97,7 +97,7 @@ def get_bounds_inputs(mode, columns):
 
 def get_user_inputs():
     dialog = QDialog()
-    dialog.setWindowTitle('Enter DetaLLZ')
+    dialog.setWindowTitle('Enter Data')
     dialog.setStyleSheet("background-color: white; color: black;")
     
     dialog.setFixedSize(400, 200)

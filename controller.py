@@ -184,10 +184,10 @@ class App(QWidget):
 
         # First image
         self.image_label1 = QLabel(self)
-        pixmap1 = QPixmap('rsxbeta.png')  # Path to your first image file
-        scaled_pixmap1 = pixmap1.scaled(300, 300, aspectRatioMode=1)  # Scale image to 100x100 while keeping aspect ratio
+        pixmap1 = QPixmap('rsxbeta.png')
+        scaled_pixmap1 = pixmap1.scaled(300, 300, aspectRatioMode=1)
         self.image_label1.setPixmap(scaled_pixmap1)
-        self.image_label1.setFixedSize(scaled_pixmap1.size())  # Set size to scaled image size
+        self.image_label1.setFixedSize(scaled_pixmap1.size())
         image_layout.addWidget(self.image_label1)
         
         # Add the image layout to the main layout
@@ -297,10 +297,6 @@ class App(QWidget):
         self.stop_btn.setStyleSheet('color: black;')
         self.stop_btn.clicked.connect(self.stop_streaming)
         control_layout.addWidget(self.stop_btn)
-
-        #self.quit_btn = QPushButton('Close EVSD1000', self)
-        #self.quit_btn.clicked.connect(self.send_ctrl_c)
-        #control_layout.addWidget(self.quit_btn)
         
         main_layout.addLayout(control_layout)
 
@@ -384,7 +380,7 @@ class App(QWidget):
         execute_script_on_raspberry_pi()
 
     def handle_mode_change(self):
-        mode = self.mode_dropdown.currentText()  # Get the selected mode from the dropdown
+        mode = self.mode_dropdown.currentText()
         self.set_mode(mode)
 
 
@@ -502,9 +498,7 @@ class App(QWidget):
         self.data_display.moveCursor(QTextCursor.End)
 
     def closeEvent(self, event):
-        # Kirim Ctrl+C saat jendela ditutup
         self.send_ctrl_c()
-        # Pastikan untuk menutup koneksi serial
         if ser and ser.is_open:
             ser.close()
         event.accept()

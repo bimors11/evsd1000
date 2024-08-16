@@ -60,7 +60,6 @@ def update_plot(window):
                         if column_data.empty:
                             continue
 
-                        # Gunakan batas yang didefinisikan oleh pengguna jika ada
                         if column in window.bounds:
                             upper_bound = window.bounds[column][0]
                             lower_bound = window.bounds[column][1]
@@ -148,6 +147,9 @@ def update_plot(window):
                         ax.add_collection(lc)
                         ax.autoscale()
 
+                        if window.mode == 'VOR':
+                            ax.set_xlim(0, 360)
+
                         if window.second_data is not None and column in window.second_data.columns:
                             second_column_data = pd.to_numeric(window.second_data[column], errors='coerce').dropna()
                             second_column_data = second_column_data.iloc[data_range_start:data_range_start + data_limit]
@@ -213,14 +215,23 @@ def save_plot(self):
                     fig = plt.figure(figsize=(11.69, 8.27))
                     fig.subplots_adjust(top=0.8, bottom=0.1, left=0.1, right=0.9, hspace=0.4)
 
-                    logo_ax = fig.add_axes([0.02, 0.9, 0.3, 0.05])
+                    logo_ax = fig.add_axes([0.1, 0.85, 0.15, 0.15])
+                    logo_ax.set_aspect('auto')
                     logo_ax.axis('off')
-                    image_path = 'rsxbeta.png'
+                    image_path = 'beta_no_icc.png'
                     if os.path.exists(image_path):
                         img = mpimg.imread(image_path)
                         logo_ax.imshow(img, aspect='auto')
 
-                    header_ax = fig.add_axes([0.35, 0.88, 0.4, 0.07])
+                    logo_ax = fig.add_axes([0.8, 0.88, 0.1, 0.1])
+                    logo_ax.set_aspect('auto')
+                    logo_ax.axis('off')
+                    image_path = 'logo R&S.png'
+                    if os.path.exists(image_path):
+                        img = mpimg.imread(image_path)
+                        logo_ax.imshow(img, aspect='auto')
+
+                    header_ax = fig.add_axes([0.3, 0.88, 0.4, 0.07])
                     header_ax.axis('off')
 
                     header_text = (
@@ -230,7 +241,7 @@ def save_plot(self):
                     )
                     header_ax.text(0.0, 0.35, header_text, fontsize=12, ha='left', va='center', wrap=True)
 
-                    header_ax2 = fig.add_axes([0.53, 0.88, 0.4, 0.07])
+                    header_ax2 = fig.add_axes([0.58, 0.88, 0.4, 0.07])
                     header_ax2.axis('off')
                     header_text_right = (
                         f'Airport: {bandara}\n'
@@ -256,7 +267,6 @@ def save_plot(self):
                             if column_data.empty:
                                 continue
 
-                            # Gunakan batas yang didefinisikan oleh pengguna jika ada
                             if column in self.bounds:
                                 upper_bound = self.bounds[column][0]
                                 lower_bound = self.bounds[column][1]
@@ -292,20 +302,44 @@ def save_plot(self):
                                         x_cross = x0 + (x1 - x0) * (upper_bound - y0) / (y1 - y0)
                                         segments.append([(x0, y0), (x_cross, upper_bound)])
                                         colors.append(color_above)
-                                        segments.append([(x_cross, upper_bound), (x1, y1)])
-                                        colors.append(color_normal if y1 < upper_bound else color_below)
+                                        if y1 < lower_bound:
+                                            x_cross_lower = x_cross + (x1 - x_cross) * (lower_bound - upper_bound) / (y1 - upper_bound)
+                                            segments.append([(x_cross, upper_bound), (x_cross_lower, lower_bound)])
+                                            colors.append(color_normal)
+                                            segments.append([(x_cross_lower, lower_bound), (x1, y1)])
+                                            colors.append(color_below)
+                                        else:
+                                            segments.append([(x_cross, upper_bound), (x1, y1)])
+                                            colors.append(color_normal)
                                     elif y1 > upper_bound:
-                                        x_cross = x0 + (x1 - x0) * (upper_bound - y0) / (y1 - y0)
-                                        segments.append([(x0, y0), (x_cross, upper_bound)])
-                                        colors.append(color_normal)
-                                        segments.append([(x_cross, upper_bound), (x1, y1)])
-                                        colors.append(color_above)
+                                        if y0 < lower_bound:
+                                            x_cross_lower = x0 + (x1 - x0) * (lower_bound - y0) / (y1 - y0)
+                                            segments.append([(x0, y0), (x_cross_lower, lower_bound)])
+                                            colors.append(color_below)
+                                            x_cross = x_cross_lower + (x1 - x_cross_lower) * (upper_bound - lower_bound) / (y1 - lower_bound)
+                                            segments.append([(x_cross_lower, lower_bound), (x_cross, upper_bound)])
+                                            colors.append(color_normal)
+                                            segments.append([(x_cross, upper_bound), (x1, y1)])
+                                            colors.append(color_above)
+                                        else:
+                                            x_cross = x0 + (x1 - x0) * (upper_bound - y0) / (y1 - y0)
+                                            segments.append([(x0, y0), (x_cross, upper_bound)])
+                                            colors.append(color_normal)
+                                            segments.append([(x_cross, upper_bound), (x1, y1)])
+                                            colors.append(color_above)
                                     elif y0 < lower_bound:
                                         x_cross = x0 + (x1 - x0) * (lower_bound - y0) / (y1 - y0)
                                         segments.append([(x0, y0), (x_cross, lower_bound)])
                                         colors.append(color_below)
-                                        segments.append([(x_cross, lower_bound), (x1, y1)])
-                                        colors.append(color_normal if y1 > lower_bound else color_above)
+                                        if y1 > upper_bound:
+                                            x_cross_upper = x_cross + (x1 - x_cross) * (upper_bound - lower_bound) / (y1 - lower_bound)
+                                            segments.append([(x_cross, lower_bound), (x_cross_upper, upper_bound)])
+                                            colors.append(color_normal)
+                                            segments.append([(x_cross_upper, upper_bound), (x1, y1)])
+                                            colors.append(color_above)
+                                        else:
+                                            segments.append([(x_cross, lower_bound), (x1, y1)])
+                                            colors.append(color_normal)
                                     elif y1 < lower_bound:
                                         x_cross = x0 + (x1 - x0) * (lower_bound - y0) / (y1 - y0)
                                         segments.append([(x0, y0), (x_cross, lower_bound)])
