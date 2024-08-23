@@ -138,40 +138,6 @@ class DataPlotter(QMainWindow):
         self.figure = Figure()
         self.canvas = FigureCanvas(self.figure)
         self.right_layout.addWidget(self.canvas)
-
-        data_limit_layout = QHBoxLayout()
-        data_limit_label = QLabel('Data Limit:')
-        data_limit_label.setStyleSheet("color: white;")
-        data_limit_layout.addWidget(data_limit_label)
-        
-        self.data_limit_slider = QSlider(Qt.Horizontal)
-        self.data_limit_slider.setMinimum(1)
-        self.data_limit_slider.setMaximum(100)
-        self.data_limit_slider.setValue(100)
-        self.data_limit_slider.setTickPosition(QSlider.TicksBelow)
-        self.data_limit_slider.setTickInterval(10)
-        self.data_limit_slider.setSingleStep(1)
-        self.data_limit_slider.valueChanged.connect(self.update_plot)
-        data_limit_layout.addWidget(self.data_limit_slider)
-        
-        self.right_layout.addLayout(data_limit_layout)
-        
-        data_range_layout = QHBoxLayout()
-        data_range_label = QLabel('Data Range:')
-        data_range_label.setStyleSheet("color: white;")
-        data_range_layout.addWidget(data_range_label)
-        
-        self.data_range_slider = QSlider(Qt.Horizontal)
-        self.data_range_slider.setMinimum(0)
-        self.data_range_slider.setMaximum(100)
-        self.data_range_slider.setValue(100)
-        self.data_range_slider.setTickPosition(QSlider.TicksBelow)
-        self.data_range_slider.setTickInterval(10)
-        self.data_range_slider.setSingleStep(1)
-        self.data_range_slider.valueChanged.connect(self.update_plot)
-        data_range_layout.addWidget(self.data_range_slider)
-        
-        self.right_layout.addLayout(data_range_layout)
             
         self.save_pdf_button = QPushButton('Save as PDF')
         self.save_pdf_button.setIcon(QIcon('pdf.png'))

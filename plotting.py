@@ -41,12 +41,6 @@ def update_plot(window):
             num_plots = len(columns)
 
             if columns:
-                data_limit_slider_value = window.data_limit_slider.value()
-                data_limit = int(data_limit_slider_value / 100 * len(window.data))
-
-                range_slider_value = window.data_range_slider.value()
-                data_range_start = int((100 - range_slider_value) / 100 * len(window.data))
-
                 for i, column in enumerate(columns):
                     if column in window.data.columns:
                         ax = window.figure.add_subplot(num_plots, 1, i + 1)
@@ -55,7 +49,6 @@ def update_plot(window):
                         ax.set_position([0.1, plot_bottom, 0.8, plot_height])
 
                         column_data = pd.to_numeric(window.data[column], errors='coerce').dropna()
-                        column_data = column_data.iloc[data_range_start:data_range_start + data_limit]
 
                         if column_data.empty:
                             continue
@@ -152,7 +145,6 @@ def update_plot(window):
 
                         if window.second_data is not None and column in window.second_data.columns:
                             second_column_data = pd.to_numeric(window.second_data[column], errors='coerce').dropna()
-                            second_column_data = second_column_data.iloc[data_range_start:data_range_start + data_limit]
 
                             x_values_2 = second_column_data.index
                             y_values_2 = second_column_data
@@ -179,6 +171,7 @@ def update_plot(window):
                 window.canvas.draw()
     except Exception as e:
         print(f"Error updating plot: {e}")
+
 
 def get_columns_based_on_mode(self):
     columns = {
@@ -353,6 +346,9 @@ def save_plot(self):
                             lc = LineCollection(segments, colors=colors, linewidths=2)
                             ax.add_collection(lc)
                             ax.autoscale()
+
+                            if self.mode == 'VOR':
+                                ax.set_xlim(0, 360)
 
                             ax.grid(True)
                             ax.set_xlabel('Time', fontsize=9)
